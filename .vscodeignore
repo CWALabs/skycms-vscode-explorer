@@ -1,0 +1,7 @@
+src/**
+out/**
+coverage/**
+**/*.test.ts
+jest.config.ts
+tsconfig.json
+esbuild.config.mjs

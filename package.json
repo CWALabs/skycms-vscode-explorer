@@ -1,0 +1,202 @@
+
+{
+  "name": "skycms-explorer",
+  "displayName": "SkyCMS Explorer",
+  "description": "Developer-first VS Code Explorer for SkyCMS entities",
+  "version": "0.0.1",
+  "publisher": "cw-a-labs",
+  "license": "MIT",
+  "engines": { "vscode": "^1.85.0" },
+  "categories": ["Other"],
+  "activationEvents": [
+    "onView:skycmsExplorer",
+    "onCommand:skycms.signIn",
+    "onCommand:skycms.signOut",
+    "onCommand:skycms.refresh",
+    "onCommand:skycms.openField",
+    "onCommand:skycms.publishArticle",
+    "onCommand:skycms.unpublishArticle",
+    "onCommand:skycms.newArticle",
+    "onCommand:skycms.publishLayoutVersion",
+    "onCommand:skycms.setDefaultLayoutVersion",
+    "onCommand:skycms.duplicateLayoutVersion",
+    "onCommand:skycms.openFile",
+    "onCommand:skycms.deleteFile",
+    "onCommand:skycms.deleteFolder",
+    "onCommand:skycms.uploadFile",
+    "onCommand:skycms.newFolder"
+  ],
+  "main": "./dist/extension.js",
+  "scripts": {
+    "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true});require('fs').rmSync('out',{recursive:true,force:true})\"",
+    "compile": "npm run clean && tsc -p ./ && node esbuild.config.mjs",
+    "watch": "tsc -watch -p ./",
+    "test": "jest --config jest.config.js --passWithNoTests",
+    "test:coverage": "jest --config jest.config.js --coverage",
+    "test:watch": "jest --config jest.config.js --watch",
+    "lint": "echo \"No lint configured\""
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^20.14.11",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.23.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.5.4"
+  },
+  "contributes": {
+    "views": {
+      "explorer": [
+        { "id": "skycmsExplorer", "name": "SkyCMS" }
+      ]
+    },
+    "commands": [
+      {
+        "command": "skycms.signIn",
+        "title": "SkyCMS: Sign In"
+      },
+      {
+        "command": "skycms.signOut",
+        "title": "SkyCMS: Sign Out"
+      },
+      {
+        "command": "skycms.refresh",
+        "title": "SkyCMS: Refresh"
+      },
+      {
+        "command": "skycms.openField",
+        "title": "SkyCMS: Open Field"
+      },
+      {
+        "command": "skycms.publishArticle",
+        "title": "Publish Article",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "skycms.unpublishArticle",
+        "title": "Unpublish Article",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "skycms.newArticle",
+        "title": "SkyCMS: New Article"
+      },
+      {
+        "command": "skycms.publishLayoutVersion",
+        "title": "Publish Layout Version",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "skycms.setDefaultLayoutVersion",
+        "title": "Set as Default Layout",
+        "icon": "$(star)"
+      },
+      {
+        "command": "skycms.duplicateLayoutVersion",
+        "title": "Duplicate Layout Version",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "skycms.openFile",
+        "title": "Open File"
+      },
+      {
+        "command": "skycms.deleteFile",
+        "title": "Delete File",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "skycms.deleteFolder",
+        "title": "Delete Folder",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "skycms.uploadFile",
+        "title": "Upload File Here",
+        "icon": "$(cloud-upload)"
+      },
+      {
+        "command": "skycms.newFolder",
+        "title": "New Folder Here",
+        "icon": "$(new-folder)"
+      }
+    ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "skycms.publishArticle",
+          "when": "view == skycmsExplorer && viewItem == articleNode",
+          "group": "skycms@1"
+        },
+        {
+          "command": "skycms.unpublishArticle",
+          "when": "view == skycmsExplorer && viewItem == articleNode",
+          "group": "skycms@2"
+        },
+        {
+          "command": "skycms.publishLayoutVersion",
+          "when": "view == skycmsExplorer && viewItem == layoutNode",
+          "group": "skycms@1"
+        },
+        {
+          "command": "skycms.setDefaultLayoutVersion",
+          "when": "view == skycmsExplorer && viewItem == layoutNode",
+          "group": "skycms@2"
+        },
+        {
+          "command": "skycms.duplicateLayoutVersion",
+          "when": "view == skycmsExplorer && viewItem == layoutNode",
+          "group": "skycms@3"
+        },
+        {
+          "command": "skycms.openFile",
+          "when": "view == skycmsExplorer && viewItem == fileNode",
+          "group": "skycms@1"
+        },
+        {
+          "command": "skycms.deleteFile",
+          "when": "view == skycmsExplorer && viewItem == fileNode",
+          "group": "skycms@2"
+        },
+        {
+          "command": "skycms.deleteFolder",
+          "when": "view == skycmsExplorer && viewItem == folderNode",
+          "group": "skycms@1"
+        },
+        {
+          "command": "skycms.uploadFile",
+          "when": "view == skycmsExplorer && viewItem == folderNode",
+          "group": "skycms@2"
+        },
+        {
+          "command": "skycms.newFolder",
+          "when": "view == skycmsExplorer && viewItem == folderNode",
+          "group": "skycms@3"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "skycms.newArticle",
+          "when": "view == skycmsExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "skycms.refresh",
+          "when": "view == skycmsExplorer",
+          "group": "navigation"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "SkyCMS",
+      "properties": {
+        "skycms.editorUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Base URL for SkyCMS Editor, for example https://editor.mysite.com"
+        }
+      }
+    }
+  }
+}
