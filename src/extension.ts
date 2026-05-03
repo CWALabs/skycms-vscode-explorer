@@ -420,6 +420,12 @@ async function openInputField(
 }
 
 export function validateInputValue(fieldKey: string, value: string): string | undefined {
+  if (fieldKey === 'title' || fieldKey === 'layoutName') {
+    if (value.trim().length === 0) {
+      return 'This field is required and cannot be empty.';
+    }
+  }
+
   if (fieldKey === 'published') {
     const trimmed = value.trim();
 
@@ -433,6 +439,23 @@ export function validateInputValue(fieldKey: string, value: string): string | un
     }
   }
 
+  return undefined;
+}
+
+export function validateDocumentContent(fieldKey: string, content: string): string | undefined {
+  if (fieldKey === 'headerJavaScript' || fieldKey === 'footerJavaScript') {
+    const trimmed = content.trim();
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+    try {
+      // eslint-disable-next-line no-new-func
+      new Function(trimmed);
+      return undefined;
+    } catch (e) {
+      return `JavaScript syntax error: ${(e as SyntaxError).message}`;
+    }
+  }
   return undefined;
 }
 
@@ -454,11 +477,18 @@ async function persistDocumentChanges(
   document: vscode.TextDocument,
 ): Promise<void> {
   const reference = parseFieldUri(document.uri);
+  const content = document.getText();
+  const validationError = validateDocumentContent(reference.fieldKey, content);
+
+  if (validationError) {
+    throw new Error(validationError);
+  }
+
   await commandClient.setDocumentFieldContent(
     reference.entityType,
     reference.entityId,
     reference.fieldKey,
-    document.getText(),
+    content,
   );
 }
 

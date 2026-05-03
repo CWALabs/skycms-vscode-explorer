@@ -6,6 +6,7 @@ import {
   assertFileNode,
   showError,
   toPersistedInputValue,
+  validateDocumentContent,
   validateInputValue,
 } from './extension';
 import { HttpError } from './apiClient/http';
@@ -156,10 +157,36 @@ function makeContext() {
 // validateInputValue
 // ---------------------------------------------------------------------------
 describe('validateInputValue', () => {
-  test('allows any value for non-published fields', () => {
-    expect(validateInputValue('title', '')).toBeUndefined();
+  test('allows any value for optional fields', () => {
     expect(validateInputValue('category', 'any text')).toBeUndefined();
-    expect(validateInputValue('bannerimage', 'not-a-date')).toBeUndefined();
+    expect(validateInputValue('bannerImage', 'not-a-date')).toBeUndefined();
+    expect(validateInputValue('category', '')).toBeUndefined();
+  });
+
+  test('returns error for empty title', () => {
+    const result = validateInputValue('title', '');
+    expect(result).toBeDefined();
+    expect(result).toContain('required');
+  });
+
+  test('returns error for whitespace-only title', () => {
+    const result = validateInputValue('title', '   ');
+    expect(result).toBeDefined();
+    expect(result).toContain('required');
+  });
+
+  test('allows non-empty title', () => {
+    expect(validateInputValue('title', 'My Article')).toBeUndefined();
+  });
+
+  test('returns error for empty layoutName', () => {
+    const result = validateInputValue('layoutName', '');
+    expect(result).toBeDefined();
+    expect(result).toContain('required');
+  });
+
+  test('allows non-empty layoutName', () => {
+    expect(validateInputValue('layoutName', 'Default Layout')).toBeUndefined();
   });
 
   test('allows empty string for published (clears the value)', () => {
@@ -176,6 +203,45 @@ describe('validateInputValue', () => {
     const result = validateInputValue('published', 'not-a-date');
     expect(result).toBeDefined();
     expect(result).toContain('ISO 8601');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// validateDocumentContent
+// ---------------------------------------------------------------------------
+describe('validateDocumentContent', () => {
+  test('returns undefined for non-JS fields regardless of content', () => {
+    expect(validateDocumentContent('content', '')).toBeUndefined();
+    expect(validateDocumentContent('head', '<script>broken(')).toBeUndefined();
+    expect(validateDocumentContent('notes', 'any text')).toBeUndefined();
+    expect(validateDocumentContent('introduction', '')).toBeUndefined();
+  });
+
+  test('returns undefined for empty JS fields (field is optional)', () => {
+    expect(validateDocumentContent('headerJavaScript', '')).toBeUndefined();
+    expect(validateDocumentContent('headerJavaScript', '   ')).toBeUndefined();
+    expect(validateDocumentContent('footerJavaScript', '')).toBeUndefined();
+  });
+
+  test('returns undefined for valid JavaScript in headerJavaScript', () => {
+    expect(validateDocumentContent('headerJavaScript', 'console.log("hello");')).toBeUndefined();
+    expect(validateDocumentContent('headerJavaScript', 'var x = 1; function init() { return x; }')).toBeUndefined();
+  });
+
+  test('returns undefined for valid JavaScript in footerJavaScript', () => {
+    expect(validateDocumentContent('footerJavaScript', 'window.onload = function() {};')).toBeUndefined();
+  });
+
+  test('returns error for invalid JavaScript in headerJavaScript', () => {
+    const result = validateDocumentContent('headerJavaScript', 'function broken( {');
+    expect(result).toBeDefined();
+    expect(result).toContain('syntax error');
+  });
+
+  test('returns error for invalid JavaScript in footerJavaScript', () => {
+    const result = validateDocumentContent('footerJavaScript', 'const x = ;');
+    expect(result).toBeDefined();
+    expect(result).toContain('syntax error');
   });
 });
 
