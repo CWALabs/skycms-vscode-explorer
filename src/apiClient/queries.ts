@@ -1,5 +1,5 @@
 import { requestJson } from './http';
-import { ArticleGroups, EntityType, LayoutSummary, TemplateSummary } from '../types';
+import { ArticleGroups, BlogPostSummary, BlogSummary, EntityType, LayoutSummary, TemplateSummary } from '../types';
 
 interface AuthMeResponse {
   username: string;
@@ -14,17 +14,17 @@ interface BrowserAuthStartResponse {
 
 export class SkyCmsQueryClient {
   private readonly getToken: () => Promise<string | undefined>;
-  private readonly baseUrl: string;
+  private readonly resolveBaseUrl: () => string;
 
-  public constructor(baseUrl: string, getToken: () => Promise<string | undefined>) {
-    this.baseUrl = baseUrl;
+  public constructor(baseUrl: string | (() => string), getToken: () => Promise<string | undefined>) {
+    this.resolveBaseUrl = typeof baseUrl === 'function' ? baseUrl : () => baseUrl;
     this.getToken = getToken;
   }
 
   public async getMe(): Promise<AuthMeResponse> {
     const token = await this.getRequiredToken();
     return requestJson<AuthMeResponse>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: '/api/vscode/auth/me',
       method: 'GET',
       token,
@@ -33,7 +33,7 @@ export class SkyCmsQueryClient {
 
   public async startBrowserAuth(): Promise<BrowserAuthStartResponse> {
     return requestJson<BrowserAuthStartResponse>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: '/api/vscode/auth/browser/start',
       method: 'GET',
     });
@@ -42,7 +42,7 @@ export class SkyCmsQueryClient {
   public async getLayouts(): Promise<LayoutSummary[]> {
     const token = await this.getRequiredToken();
     return requestJson<LayoutSummary[]>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: '/api/vscode/layouts',
       method: 'GET',
       token,
@@ -52,7 +52,7 @@ export class SkyCmsQueryClient {
   public async getTemplates(): Promise<TemplateSummary[]> {
     const token = await this.getRequiredToken();
     return requestJson<TemplateSummary[]>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: '/api/vscode/templates',
       method: 'GET',
       token,
@@ -62,7 +62,7 @@ export class SkyCmsQueryClient {
   public async getArticles(): Promise<ArticleGroups> {
     const token = await this.getRequiredToken();
     return requestJson<ArticleGroups>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: '/api/vscode/articles',
       method: 'GET',
       token,
@@ -77,7 +77,7 @@ export class SkyCmsQueryClient {
     const token = await this.getRequiredToken();
     const path = this.buildFieldPath(entityType, entityId, fieldKey);
     const response = await requestJson<{ content?: string }>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path,
       method: 'GET',
       token,
@@ -94,7 +94,7 @@ export class SkyCmsQueryClient {
     const token = await this.getRequiredToken();
     const path = this.buildFieldPath(entityType, entityId, fieldKey);
     const response = await requestJson<{ value?: string | null }>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path,
       method: 'GET',
       token,
@@ -127,7 +127,7 @@ export class SkyCmsQueryClient {
     const apiPath = `/api/vscode/files/${pathHash}`;
 
     const response = await requestJson<Array<{name: string; isDir: boolean; size: number}>>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: apiPath,
       method: 'GET',
       token,
@@ -144,7 +144,7 @@ export class SkyCmsQueryClient {
     const apiPath = `/api/vscode/files/${pathHash}/stat`;
 
     const response = await requestJson<{size: number; mtime: number; isDir: boolean; mimeType: string}>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: apiPath,
       method: 'GET',
       token,
@@ -159,7 +159,7 @@ export class SkyCmsQueryClient {
     const apiPath = `/api/vscode/files/${pathHash}/read`;
 
     const response = await requestJson<{content?: string; isBase64?: boolean} | ArrayBuffer>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: apiPath,
       method: 'GET',
       token,
@@ -176,6 +176,35 @@ export class SkyCmsQueryClient {
     }
 
     return '';
+  }
+
+  public async getBlogs(): Promise<BlogSummary[]> {
+    const token = await this.getRequiredToken();
+    return requestJson<BlogSummary[]>({
+      baseUrl: this.getRequiredBaseUrl(),
+      path: '/api/vscode/blogs',
+      method: 'GET',
+      token,
+    });
+  }
+
+  public async getBlogPosts(blogKey: string): Promise<BlogPostSummary[]> {
+    const token = await this.getRequiredToken();
+    return requestJson<BlogPostSummary[]>({
+      baseUrl: this.getRequiredBaseUrl(),
+      path: `/api/vscode/blogs/${encodeURIComponent(blogKey)}/posts`,
+      method: 'GET',
+      token,
+    });
+  }
+
+  private getRequiredBaseUrl(): string {
+    const baseUrl = this.resolveBaseUrl().trim();
+    if (!baseUrl) {
+      throw new Error('No SkyCMS site is currently selected.');
+    }
+
+    return baseUrl;
   }
 
   private encodePathHash(path: string): string {

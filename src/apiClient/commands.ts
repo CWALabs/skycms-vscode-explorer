@@ -14,16 +14,16 @@ interface BrowserAuthExchangeResponse {
 
 export class SkyCmsCommandClient {
   private readonly getToken: () => Promise<string | undefined>;
-  private readonly baseUrl: string;
+  private readonly resolveBaseUrl: () => string;
 
-  public constructor(baseUrl: string, getToken: () => Promise<string | undefined>) {
-    this.baseUrl = baseUrl;
+  public constructor(baseUrl: string | (() => string), getToken: () => Promise<string | undefined>) {
+    this.resolveBaseUrl = typeof baseUrl === 'function' ? baseUrl : () => baseUrl;
     this.getToken = getToken;
   }
 
   public async completeBrowserAuth(payload: BrowserAuthExchangeRequest): Promise<BrowserAuthExchangeResponse> {
     return requestJson<BrowserAuthExchangeResponse>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: '/api/vscode/auth/browser/exchange',
       method: 'POST',
       body: payload,
@@ -38,7 +38,7 @@ export class SkyCmsCommandClient {
     }
 
     await requestJson<void>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: '/api/vscode/auth/logout',
       method: 'POST',
       token,
@@ -53,7 +53,7 @@ export class SkyCmsCommandClient {
   ): Promise<void> {
     const token = await this.getRequiredToken();
     await requestJson<void>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: this.buildFieldPath(entityType, entityId, fieldKey),
       method: 'PUT',
       token,
@@ -69,7 +69,7 @@ export class SkyCmsCommandClient {
   ): Promise<void> {
     const token = await this.getRequiredToken();
     await requestJson<void>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: this.buildFieldPath(entityType, entityId, fieldKey),
       method: 'PUT',
       token,
@@ -80,7 +80,7 @@ export class SkyCmsCommandClient {
   public async publishArticle(articleNumber: number): Promise<void> {
     const token = await this.getRequiredToken();
     await requestJson<void>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/articles/${articleNumber}/publish`,
       method: 'POST',
       token,
@@ -90,7 +90,7 @@ export class SkyCmsCommandClient {
   public async unpublishArticle(articleNumber: number): Promise<void> {
     const token = await this.getRequiredToken();
     await requestJson<void>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/articles/${articleNumber}/unpublish`,
       method: 'POST',
       token,
@@ -100,7 +100,7 @@ export class SkyCmsCommandClient {
   public async createArticle(title: string, articleType?: number): Promise<{ articleNumber: number; title: string }> {
     const token = await this.getRequiredToken();
     return requestJson<{ articleNumber: number; title: string }>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: '/api/vscode/articles',
       method: 'POST',
       token,
@@ -111,7 +111,7 @@ export class SkyCmsCommandClient {
   public async publishLayoutVersion(layoutNumber: number, version: number): Promise<void> {
     const token = await this.getRequiredToken();
     await requestJson<void>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/layouts/${layoutNumber}/${version}/publish`,
       method: 'POST',
       token,
@@ -121,7 +121,7 @@ export class SkyCmsCommandClient {
   public async setDefaultLayoutVersion(layoutNumber: number, version: number): Promise<void> {
     const token = await this.getRequiredToken();
     await requestJson<void>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/layouts/${layoutNumber}/${version}/set-default`,
       method: 'POST',
       token,
@@ -131,7 +131,7 @@ export class SkyCmsCommandClient {
   public async duplicateLayoutVersion(layoutNumber: number): Promise<{ layoutNumber: number; version: number }> {
     const token = await this.getRequiredToken();
     return requestJson<{ layoutNumber: number; version: number }>({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/layouts/${layoutNumber}/versions`,
       method: 'POST',
       token,
@@ -142,7 +142,7 @@ export class SkyCmsCommandClient {
     const token = await this.getRequiredToken();
     const pathHash = this.encodePathHash(path);
     await requestRaw({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/files/${pathHash}`,
       method: 'DELETE',
       token,
@@ -153,7 +153,7 @@ export class SkyCmsCommandClient {
     const token = await this.getRequiredToken();
     const pathHash = this.encodePathHash(path);
     await requestRaw({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/folders/${pathHash}`,
       method: 'DELETE',
       token,
@@ -164,7 +164,7 @@ export class SkyCmsCommandClient {
     const token = await this.getRequiredToken();
     const pathHash = this.encodePathHash(path);
     await requestRaw({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/folders/${pathHash}`,
       method: 'POST',
       token,
@@ -175,7 +175,7 @@ export class SkyCmsCommandClient {
     const token = await this.getRequiredToken();
     const pathHash = this.encodePathHash(path);
     await requestRaw({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/files/${pathHash}`,
       method: 'POST',
       token,
@@ -187,7 +187,7 @@ export class SkyCmsCommandClient {
     const token = await this.getRequiredToken();
     const pathHash = this.encodePathHash(sourcePath);
     await requestJson({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/files/${pathHash}/move`,
       method: 'POST',
       token,
@@ -199,7 +199,7 @@ export class SkyCmsCommandClient {
     const token = await this.getRequiredToken();
     const pathHash = this.encodePathHash(sourcePath);
     await requestJson({
-      baseUrl: this.baseUrl,
+      baseUrl: this.getRequiredBaseUrl(),
       path: `/api/vscode/folders/${pathHash}/move`,
       method: 'POST',
       token,
@@ -222,6 +222,15 @@ export class SkyCmsCommandClient {
     }
 
     return token;
+  }
+
+  private getRequiredBaseUrl(): string {
+    const baseUrl = this.resolveBaseUrl().trim();
+    if (!baseUrl) {
+      throw new Error('No SkyCMS site is currently selected.');
+    }
+
+    return baseUrl;
   }
 
   private buildFieldPath(entityType: EntityType, entityId: string, fieldKey: string): string {

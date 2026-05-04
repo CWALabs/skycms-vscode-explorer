@@ -2,18 +2,28 @@
 {
   "name": "skycms-explorer",
   "displayName": "SkyCMS Explorer",
-  "description": "Developer-first VS Code Explorer for SkyCMS entities",
-  "version": "0.0.1",
-  "publisher": "cw-a-labs",
+  "description": "Developer-first VS Code Explorer for SkyCMS websites. Manage your sites, articles, layouts, and files directly from VS Code.",
+  "version": "0.0.2",
+  "publisher": "Creative Web Arts",
   "license": "MIT",
+  "icon": "images/icon.png",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/CWALabs/skycms-vscode-explorer"
+  },
   "engines": { "vscode": "^1.85.0" },
   "categories": ["Other"],
   "activationEvents": [
     "onView:skycmsExplorer",
     "onCommand:skycms.signIn",
     "onCommand:skycms.signOut",
+    "onCommand:skycms.addSite",
+    "onCommand:skycms.switchSite",
+    "onCommand:skycms.removeSite",
+    "onCommand:skycms.manageSites",
     "onCommand:skycms.refresh",
     "onCommand:skycms.openField",
+    "onCommand:skycms.preview",
     "onCommand:skycms.publishArticle",
     "onCommand:skycms.unpublishArticle",
     "onCommand:skycms.newArticle",
@@ -51,6 +61,18 @@
         { "id": "skycmsExplorer", "name": "SkyCMS" }
       ]
     },
+    "viewsWelcome": [
+      {
+        "view": "skycmsExplorer",
+        "contents": "No SkyCMS site is configured yet.\n[Add Site](command:skycms.addSite)\nYou can add as many sites as you need and switch between them at any time.",
+        "when": "skycms.hasSite == false"
+      },
+      {
+        "view": "skycmsExplorer",
+        "contents": "Sign in to connect to SkyCMS.\n[Sign In](command:skycms.signIn)",
+        "when": "skycms.hasSite == true && skycms.isSignedIn == false"
+      }
+    ],
     "commands": [
       {
         "command": "skycms.signIn",
@@ -61,12 +83,33 @@
         "title": "SkyCMS: Sign Out"
       },
       {
+        "command": "skycms.addSite",
+        "title": "SkyCMS: Add Site"
+      },
+      {
+        "command": "skycms.switchSite",
+        "title": "SkyCMS: Switch Site"
+      },
+      {
+        "command": "skycms.removeSite",
+        "title": "SkyCMS: Remove Site"
+      },
+      {
+        "command": "skycms.manageSites",
+        "title": "SkyCMS: Manage Sites"
+      },
+      {
         "command": "skycms.refresh",
         "title": "SkyCMS: Refresh"
       },
       {
         "command": "skycms.openField",
         "title": "SkyCMS: Open Field"
+      },
+      {
+        "command": "skycms.preview",
+        "title": "Preview",
+        "icon": "$(preview)"
       },
       {
         "command": "skycms.publishArticle",
@@ -125,6 +168,11 @@
     "menus": {
       "view/item/context": [
         {
+          "command": "skycms.preview",
+          "when": "view == skycmsExplorer && viewItem == articleNode",
+          "group": "skycms@0"
+        },
+        {
           "command": "skycms.publishArticle",
           "when": "view == skycmsExplorer && viewItem == articleNode",
           "group": "skycms@1"
@@ -135,6 +183,21 @@
           "group": "skycms@2"
         },
         {
+          "command": "skycms.preview",
+          "when": "view == skycmsExplorer && viewItem == blogPostNode",
+          "group": "skycms@0"
+        },
+        {
+          "command": "skycms.preview",
+          "when": "view == skycmsExplorer && viewItem == blogNode",
+          "group": "skycms@0"
+        },
+        {
+          "command": "skycms.preview",
+          "when": "view == skycmsExplorer && viewItem == layoutNode",
+          "group": "skycms@0"
+        },
+        {
           "command": "skycms.publishLayoutVersion",
           "when": "view == skycmsExplorer && viewItem == layoutNode",
           "group": "skycms@1"
@@ -143,6 +206,11 @@
           "command": "skycms.setDefaultLayoutVersion",
           "when": "view == skycmsExplorer && viewItem == layoutNode",
           "group": "skycms@2"
+        },
+        {
+          "command": "skycms.preview",
+          "when": "view == skycmsExplorer && viewItem == templateNode",
+          "group": "skycms@0"
         },
         {
           "command": "skycms.duplicateLayoutVersion",
@@ -177,7 +245,17 @@
       ],
       "view/title": [
         {
+          "command": "skycms.switchSite",
+          "when": "view == skycmsExplorer",
+          "group": "navigation"
+        },
+        {
           "command": "skycms.newArticle",
+          "when": "view == skycmsExplorer",
+          "group": "navigation"
+        },
+        {
+          "command": "skycms.manageSites",
           "when": "view == skycmsExplorer",
           "group": "navigation"
         },

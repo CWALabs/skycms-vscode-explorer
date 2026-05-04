@@ -7,31 +7,73 @@ import { SkyCmsNode, SkyCmsTreeProvider } from './treeProvider';
 import { HttpError } from './apiClient/http';
 import { SkyCmsDocumentProvider } from './documentProvider';
 import { SkyCmsFileSystemProvider } from './fileSystemProvider';
+import { SiteManager, SkyCmsSiteProfile } from './siteManager';
 import { buildFieldUri, getLanguageForField, parseFieldUri } from './uriUtils';
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
-  const editorUrl = getEditorUrl();
+  const siteManager = new SiteManager(context);
+  await siteManager.ensureInitialized(getConfiguredEditorUrl());
 
-  if (!editorUrl) {
-    vscode.window.showWarningMessage(
-      'SkyCMS editor URL is not configured. Set skycms.editorUrl in VS Code settings before signing in.',
-    );
-  }
+  let activeSite = await siteManager.getActiveSite();
+
+  const updateViewContext = async (): Promise<void> => {
+    const site = await siteManager.getActiveSite();
+    await vscode.commands.executeCommand('setContext', 'skycms.hasSite', !!site);
+    const token = site ? await context.secrets.get(siteManager.getTokenSecretKey(site.id)) : undefined;
+    await vscode.commands.executeCommand('setContext', 'skycms.isSignedIn', !!token);
+  };
+
+  await updateViewContext();
+
+  const getActiveEditorUrl = (): string => activeSite?.editorUrl ?? '';
+  const getActiveTokenStorageKey = (): string | undefined =>
+    activeSite ? siteManager.getTokenSecretKey(activeSite.id) : undefined;
+
+  const ensureSiteConfigured = (): void => {
+    if (getActiveEditorUrl()) {
+      return;
+    }
+
+    throw new Error('No SkyCMS site is configured. Run "SkyCMS: Add Site" first.');
+  };
+
+  const ensureEditorUrlConfigured = ensureSiteConfigured;
+
+  const siteStatusItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 200);
+  siteStatusItem.command = 'skycms.switchSite';
+
+  const updateSiteStatusBar = (): void => {
+    if (!activeSite) {
+      siteStatusItem.text = '$(globe) SkyCMS: Add Site';
+      siteStatusItem.tooltip = 'No SkyCMS site configured. Click to switch site or run SkyCMS: Add Site.';
+      siteStatusItem.command = 'skycms.manageSites';
+      siteStatusItem.show();
+      return;
+    }
+
+    siteStatusItem.text = `$(globe) SkyCMS: ${activeSite.name}`;
+    siteStatusItem.tooltip = `${activeSite.editorUrl}\nClick to switch site.`;
+    siteStatusItem.command = 'skycms.switchSite';
+    siteStatusItem.show();
+  };
+
+  updateSiteStatusBar();
 
   let authManager: AuthManager;
   const tokenProvider = async (): Promise<string | undefined> => authManager.getToken();
-  const queryClient = new SkyCmsQueryClient(editorUrl, tokenProvider);
-  const commandClient = new SkyCmsCommandClient(editorUrl, tokenProvider);
-  authManager = new AuthManager(context, queryClient, commandClient);
-  const provider = new SkyCmsTreeProvider(queryClient, async () => authManager.getToken());
+  const queryClient = new SkyCmsQueryClient(getActiveEditorUrl, tokenProvider);
+  const commandClient = new SkyCmsCommandClient(getActiveEditorUrl, tokenProvider);
+  authManager = new AuthManager(context, queryClient, commandClient, getActiveTokenStorageKey);
+  const provider = new SkyCmsTreeProvider(queryClient, async () => authManager.getToken(), siteManager);
   const documentProvider = new SkyCmsDocumentProvider(queryClient);
   const fileSystemProvider = new SkyCmsFileSystemProvider(queryClient, commandClient);
 
   context.subscriptions.push(
+    siteStatusItem,
     vscode.window.registerTreeDataProvider('skycmsExplorer', provider),
     vscode.workspace.registerTextDocumentContentProvider('skycms', documentProvider),
     vscode.workspace.registerFileSystemProvider('skycms-blob', fileSystemProvider, {isCaseSensitive: true}),
-    authManager.onAuthStateChanged(() => provider.refresh()),
+    authManager.onAuthStateChanged(async () => { await updateViewContext(); provider.refresh(); }),
     vscode.workspace.onWillSaveTextDocument((event) => {
       if (event.document.uri.scheme !== 'skycms') {
         return;
@@ -55,9 +97,110 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('skycms.signOut', async () => {
       try {
         await authManager.signOut();
-        vscode.window.showInformationMessage('Signed out from SkyCMS.');
+        vscode.window.showInformationMessage(
+          activeSite
+            ? `Signed out from SkyCMS (${activeSite.name}).`
+            : 'Signed out from SkyCMS.',
+        );
       } catch (error) {
         showError('SkyCMS sign-out failed.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.addSite', async () => {
+      try {
+        const site = await promptForNewSite(siteManager);
+        if (!site) {
+          return;
+        }
+
+        activeSite = await siteManager.setActiveSite(site.id);
+        updateSiteStatusBar();
+        await updateViewContext();
+        provider.refresh();
+        fileSystemProvider.refresh();
+        vscode.window.showInformationMessage(`SkyCMS site "${activeSite.name}" added and selected.`);
+      } catch (error) {
+        showError('Could not add SkyCMS site.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.switchSite', async () => {
+      try {
+        const selected = await pickSite(siteManager, 'Select a SkyCMS site');
+        if (!selected) {
+          return;
+        }
+
+        activeSite = await siteManager.setActiveSite(selected.id);
+        updateSiteStatusBar();
+        await updateViewContext();
+        provider.refresh();
+        fileSystemProvider.refresh();
+        await authManager.validateToken();
+        vscode.window.showInformationMessage(`Switched to SkyCMS site "${activeSite.name}"."`);
+      } catch (error) {
+        showError('Could not switch SkyCMS site.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.removeSite', async () => {
+      try {
+        const selected = await pickSite(siteManager, 'Select a SkyCMS site to remove');
+        if (!selected) {
+          return;
+        }
+
+        const confirm = await vscode.window.showWarningMessage(
+          `Remove SkyCMS site "${selected.name}" (${selected.editorUrl})?`,
+          { modal: true },
+          'Remove',
+        );
+
+        if (confirm !== 'Remove') {
+          return;
+        }
+
+        const tokenKey = siteManager.getTokenSecretKey(selected.id);
+        await context.secrets.delete(tokenKey);
+        await siteManager.removeSite(selected.id);
+        activeSite = await siteManager.getActiveSite();
+        updateSiteStatusBar();
+        await updateViewContext();
+
+        provider.refresh();
+        fileSystemProvider.refresh();
+        vscode.window.showInformationMessage(`Removed SkyCMS site "${selected.name}"."`);
+      } catch (error) {
+        showError('Could not remove SkyCMS site.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.manageSites', async () => {
+      try {
+        const action = await vscode.window.showQuickPick(
+          [
+            { label: 'Add Site', value: 'add' },
+            { label: 'Switch Site', value: 'switch' },
+            { label: 'Remove Site', value: 'remove' },
+          ],
+          {
+            title: 'Manage SkyCMS Sites',
+            ignoreFocusOut: true,
+          },
+        );
+
+        switch (action?.value) {
+          case 'add':
+            await vscode.commands.executeCommand('skycms.addSite');
+            break;
+          case 'switch':
+            await vscode.commands.executeCommand('skycms.switchSite');
+            break;
+          case 'remove':
+            await vscode.commands.executeCommand('skycms.removeSite');
+            break;
+          default:
+            break;
+        }
+      } catch (error) {
+        showError('Could not manage SkyCMS sites.', error);
       }
     }),
     vscode.commands.registerCommand('skycms.refresh', () => {
@@ -140,6 +283,20 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         vscode.window.showInformationMessage(`Article "${title.trim()}" created.`);
       } catch (error) {
         showError('Could not create article.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.preview', async (node: unknown) => {
+      try {
+        ensureEditorUrlConfigured();
+        const previewNode = assertPreviewNode(node);
+        const previewUrl = buildPreviewUrl(previewNode, getActiveEditorUrl());
+        const opened = await vscode.env.openExternal(vscode.Uri.parse(previewUrl));
+
+        if (!opened) {
+          throw new Error('Could not open browser preview URL.');
+        }
+      } catch (error) {
+        showError('Could not open preview.', error);
       }
     }),
     vscode.commands.registerCommand('skycms.publishLayoutVersion', async (node: unknown) => {
@@ -314,7 +471,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }),
   );
 
-  if (editorUrl) {
+  if (getActiveEditorUrl()) {
     try {
       await authManager.validateToken();
     } catch (error) {
@@ -322,6 +479,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     }
   }
 
+  updateSiteStatusBar();
   provider.refresh();
 }
 
@@ -365,6 +523,64 @@ export function assertLayoutNode(node: unknown): SkyCmsNode {
   }
 
   return typedNode;
+}
+
+export function assertTemplateNode(node: unknown): SkyCmsNode {
+  if (!node || typeof node !== 'object') {
+    throw new Error('Invalid template node payload.');
+  }
+
+  const typedNode = node as SkyCmsNode;
+
+  if (typedNode.kind !== 'template' || !typedNode.template) {
+    throw new Error('Invalid SkyCMS template node.');
+  }
+
+  return typedNode;
+}
+
+export function assertBlogPostNode(node: unknown): SkyCmsNode {
+  if (!node || typeof node !== 'object') {
+    throw new Error('Invalid blog post node payload.');
+  }
+
+  const typedNode = node as SkyCmsNode;
+
+  if (typedNode.kind !== 'blog-post' || !typedNode.blogPost) {
+    throw new Error('Invalid SkyCMS blog post node.');
+  }
+
+  return typedNode;
+}
+
+export function assertPreviewNode(node: unknown): SkyCmsNode {
+  if (!node || typeof node !== 'object') {
+    throw new Error('Invalid preview node payload.');
+  }
+
+  const typedNode = node as SkyCmsNode;
+
+  if (typedNode.kind === 'article' && typedNode.article) {
+    return typedNode;
+  }
+
+  if (typedNode.kind === 'blog-post' && typedNode.blogPost) {
+    return typedNode;
+  }
+
+  if (typedNode.kind === 'blog' && typedNode.blog) {
+    return typedNode;
+  }
+
+  if (typedNode.kind === 'layout' && typedNode.layout) {
+    return typedNode;
+  }
+
+  if (typedNode.kind === 'template' && typedNode.template) {
+    return typedNode;
+  }
+
+  throw new Error('This node type does not support preview.');
 }
 
 export function assertFileNode(node: unknown): SkyCmsNode {
@@ -492,16 +708,126 @@ async function persistDocumentChanges(
   );
 }
 
-function getEditorUrl(): string {
+function getConfiguredEditorUrl(): string {
   return vscode.workspace.getConfiguration('skycms').get<string>('editorUrl', '').trim();
 }
 
-function ensureEditorUrlConfigured(): void {
-  if (getEditorUrl()) {
-    return;
+function buildPreviewUrl(node: SkyCmsNode, editorBaseUrl: string): string {
+  const base = new URL(editorBaseUrl);
+  const preview = new URL('/Home/Index', base);
+
+  switch (node.kind) {
+    case 'article': {
+      const article = node.article;
+      if (!article?.id) {
+        throw new Error('This article is missing a preview ID. Refresh the tree and try again.');
+      }
+
+      preview.searchParams.set('previewType', 'editor');
+      preview.searchParams.set('itemId', article.id);
+      preview.searchParams.set('editorUrl', new URL(`/Editor/VisualEditor/${article.articleNumber}`, base).toString());
+      return preview.toString();
+    }
+
+    case 'blog-post': {
+      const post = node.blogPost;
+      if (!post?.id) {
+        throw new Error('This blog post is missing a preview ID. Refresh the tree and try again.');
+      }
+
+      preview.searchParams.set('previewType', 'editor');
+      preview.searchParams.set('itemId', post.id);
+      preview.searchParams.set('editorUrl', new URL(`/Editor/VisualEditor/${post.articleNumber}`, base).toString());
+      return preview.toString();
+    }
+
+    case 'blog': {
+      const blogKey = node.blog?.blogKey;
+      if (!blogKey) {
+        throw new Error('This blog is missing a blog key. Refresh the tree and try again.');
+      }
+
+      return new URL(`/editor/blogs/${encodeURIComponent(blogKey)}/preview`, base).toString();
+    }
+
+    case 'layout': {
+      const layoutId = node.layout?.id;
+      if (!layoutId) {
+        throw new Error('This layout version is missing a preview ID. Refresh the tree and try again.');
+      }
+
+      preview.searchParams.set('previewType', 'layouts');
+      preview.searchParams.set('itemId', layoutId);
+      preview.searchParams.set('editorUrl', new URL('/Layouts/Index', base).toString());
+      return preview.toString();
+    }
+
+    case 'template': {
+      preview.searchParams.set('previewType', 'templates');
+      preview.searchParams.set('itemId', node.template!.templateId);
+      preview.searchParams.set('editorUrl', new URL('/Templates/Index', base).toString());
+      return preview.toString();
+    }
+
+    default:
+      throw new Error('This node type does not support preview.');
+  }
+}
+
+async function promptForNewSite(siteManager: SiteManager): Promise<SkyCmsSiteProfile | undefined> {
+  const editorUrl = await vscode.window.showInputBox({
+    title: 'Add SkyCMS Site',
+    prompt: 'Enter the SkyCMS editor base URL (for example https://editor.example.com).',
+    ignoreFocusOut: true,
+    validateInput: (value) => (value.trim().length === 0 ? 'Editor URL is required.' : undefined),
+  });
+
+  if (!editorUrl) {
+    return undefined;
   }
 
-  throw new Error('Missing skycms.editorUrl configuration value.');
+  const suggestedName = (() => {
+    try {
+      return new URL(editorUrl).host;
+    } catch {
+      return '';
+    }
+  })();
+
+  const displayName = await vscode.window.showInputBox({
+    title: 'Site Name',
+    prompt: 'Enter a display name for this site (optional).',
+    value: suggestedName,
+    ignoreFocusOut: true,
+  });
+
+  return siteManager.addSite(editorUrl, displayName?.trim());
+}
+
+async function pickSite(
+  siteManager: SiteManager,
+  title: string,
+): Promise<SkyCmsSiteProfile | undefined> {
+  const sites = await siteManager.getSites();
+  if (sites.length === 0) {
+    vscode.window.showWarningMessage('No SkyCMS sites are configured. Run "SkyCMS: Add Site" first.');
+    return undefined;
+  }
+
+  const selected = await vscode.window.showQuickPick(
+    sites.map((site) => ({
+      label: site.name,
+      description: site.editorUrl,
+      detail: site.isDefault ? 'Default site' : undefined,
+      site,
+    })),
+    {
+      title,
+      ignoreFocusOut: true,
+    },
+  );
+
+  return selected?.site;
 }
 
 export function showError(prefix: string, error: unknown): void {

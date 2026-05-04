@@ -166,6 +166,46 @@ describe('requestJson', () => {
     ).rejects.toBeInstanceOf(HttpError);
   });
 
+  test('sets rejectUnauthorized: false for https://localhost requests', async () => {
+    setupTransport(httpsMock, 200, '{}');
+
+    await requestJson({
+      baseUrl: 'https://localhost:5001',
+      path: '/api/test',
+      method: 'GET',
+    });
+
+    const callArgs = httpsMock.request.mock.calls[0][0] as Record<string, any>;
+    expect(callArgs.rejectUnauthorized).toBe(false);
+  });
+
+  test('sets rejectUnauthorized: false for https://127.0.0.1 requests', async () => {
+    setupTransport(httpsMock, 200, '{}');
+
+    await requestJson({
+      baseUrl: 'https://127.0.0.1:5001',
+      path: '/api/test',
+      method: 'GET',
+    });
+
+    const callArgs = httpsMock.request.mock.calls[0][0] as Record<string, any>;
+    expect(callArgs.rejectUnauthorized).toBe(false);
+  });
+
+  test('does not set rejectUnauthorized for remote https requests', async () => {
+    setupTransport(httpsMock, 200, '{}');
+
+    await requestJson({
+      baseUrl: 'https://example.com',
+      path: '/api/test',
+      method: 'GET',
+    });
+
+    const callArgs = httpsMock.request.mock.calls[0][0] as Record<string, any>;
+    expect(callArgs.rejectUnauthorized).toBeUndefined();
+  });
+
+
   test('rejects when the request emits an error event', async () => {
     const res = new EventEmitter() as EventEmitter & { statusCode: number };
     res.statusCode = 200;

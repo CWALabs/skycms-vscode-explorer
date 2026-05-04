@@ -22,21 +22,13 @@ Install the `.vsix` package from the Releases page:
 3. Run **Extensions: Install from VSIX…**
 4. Select the downloaded `.vsix` file.
 
-### 2. Set the editor URL
+### 2. Add your first site
 
-The extension needs the base URL of your SkyCMS Editor instance.
+Run **SkyCMS: Add Site** from the Command Palette and enter your SkyCMS editor URL.
 
-1. Open **Settings** (`Ctrl+,` / `Cmd+,`).
-2. Search for **SkyCMS**.
-3. Set **SkyCMS: Editor URL** to your editor's base URL.
+The extension stores sites globally and lets you switch between them at any time.
 
-Or add this line directly to your `settings.json`:
-
-```json
-"skycms.editorUrl": "https://editor.example.com"
-```
-
-Replace `https://editor.example.com` with your actual SkyCMS Editor URL.
+Optional compatibility mode: if `skycms.editorUrl` already exists in your `settings.json`, the extension imports it automatically as your first site.
 
 ### 3. Sign in
 
@@ -52,13 +44,14 @@ You can also trigger sign-in from the Command Palette: **SkyCMS: Sign In**.
 
 ## The SkyCMS Panel
 
-After signing in, the SkyCMS panel shows four top-level categories:
+After signing in, the SkyCMS panel shows five top-level categories:
 
 | Category | Contents |
 |---|---|
 | **Layouts** | Your site layouts and their versions |
 | **Page Templates** | Reusable page templates |
 | **Articles** | Blog or content articles, split into Drafts and Published |
+| **Blogs** | Blog streams and their blog posts |
 | **Files** | Blob storage file tree, rooted at `/pub` |
 
 Click any category to expand it. Click any item inside to expand it further.
@@ -198,6 +191,10 @@ All SkyCMS commands are available from the Command Palette (`Ctrl+Shift+P` / `Cm
 
 | Command | What it does |
 |---|---|
+| **SkyCMS: Add Site** | Add a SkyCMS editor URL profile |
+| **SkyCMS: Switch Site** | Switch the active SkyCMS site |
+| **SkyCMS: Remove Site** | Remove a saved SkyCMS site |
+| **SkyCMS: Manage Sites** | Open a menu for add/switch/remove site actions |
 | **SkyCMS: Sign In** | Start the browser sign-in flow |
 | **SkyCMS: Sign Out** | Clear your stored credentials and sign out |
 | **SkyCMS: Refresh** | Reload the tree from SkyCMS |
@@ -207,8 +204,11 @@ All SkyCMS commands are available from the Command Palette (`Ctrl+Shift+P` / `Cm
 
 ## Troubleshooting
 
-**"SkyCMS editor URL is not configured"**  
-Open Settings and set `skycms.editorUrl` to your editor's base URL. See [Set the editor URL](#2-set-the-editor-url) above.
+**"No SkyCMS site is configured"**  
+Run **SkyCMS: Add Site** and enter your editor URL.
+
+**Need to work across multiple editors/tenants?**  
+Use **SkyCMS: Switch Site** to move between saved sites.
 
 **The tree is empty after signing in**  
 Click the refresh icon in the SkyCMS panel header, or run **SkyCMS: Refresh** from the Command Palette.

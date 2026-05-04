@@ -3,12 +3,11 @@ import { SkyCmsCommandClient } from './apiClient/commands';
 import { SkyCmsQueryClient } from './apiClient/queries';
 import { HttpError } from './apiClient/http';
 
-const TOKEN_KEY = 'skycms.bearerToken';
-
 export class AuthManager {
   private readonly context: vscode.ExtensionContext;
   private readonly queryClient: SkyCmsQueryClient;
   private readonly commandClient: SkyCmsCommandClient;
+  private readonly getTokenStorageKey: () => string | undefined;
   private readonly authStateChangedEmitter = new vscode.EventEmitter<void>();
 
   public readonly onAuthStateChanged = this.authStateChangedEmitter.event;
@@ -17,14 +16,21 @@ export class AuthManager {
     context: vscode.ExtensionContext,
     queryClient: SkyCmsQueryClient,
     commandClient: SkyCmsCommandClient,
+    getTokenStorageKey: () => string | undefined,
   ) {
     this.context = context;
     this.queryClient = queryClient;
     this.commandClient = commandClient;
+    this.getTokenStorageKey = getTokenStorageKey;
   }
 
   public async getToken(): Promise<string | undefined> {
-    return this.context.secrets.get(TOKEN_KEY);
+    const tokenKey = this.getTokenStorageKey();
+    if (!tokenKey) {
+      return undefined;
+    }
+
+    return this.context.secrets.get(tokenKey);
   }
 
   public async startBrowserSignIn(): Promise<boolean> {
@@ -54,7 +60,12 @@ export class AuthManager {
       return false;
     }
 
-    await this.context.secrets.store(TOKEN_KEY, exchanged.token);
+    const tokenKey = this.getTokenStorageKey();
+    if (!tokenKey) {
+      throw new Error('No SkyCMS site is currently selected.');
+    }
+
+    await this.context.secrets.store(tokenKey, exchanged.token);
     this.authStateChangedEmitter.fire();
     vscode.window.showInformationMessage('SkyCMS sign-in successful. You can close the browser tab.');
     return true;
@@ -67,7 +78,11 @@ export class AuthManager {
       // Best-effort logout. Local token is always cleared.
     }
 
-    await this.context.secrets.delete(TOKEN_KEY);
+    const tokenKey = this.getTokenStorageKey();
+    if (tokenKey) {
+      await this.context.secrets.delete(tokenKey);
+    }
+
     this.authStateChangedEmitter.fire();
   }
 
@@ -83,7 +98,11 @@ export class AuthManager {
       return true;
     } catch (error) {
       if (error instanceof HttpError && error.status === 401) {
-        await this.context.secrets.delete(TOKEN_KEY);
+        const tokenKey = this.getTokenStorageKey();
+        if (tokenKey) {
+          await this.context.secrets.delete(tokenKey);
+        }
+
         this.authStateChangedEmitter.fire();
         return false;
       }

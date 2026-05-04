@@ -24,26 +24,46 @@ jest.mock('vscode', () => ({
   },
   window: {
     registerTreeDataProvider: jest.fn(() => ({ dispose: jest.fn() })),
+    createStatusBarItem: jest.fn(() => ({
+      text: '',
+      tooltip: '',
+      command: undefined,
+      show: jest.fn(),
+      hide: jest.fn(),
+      dispose: jest.fn(),
+    })),
     showWarningMessage: jest.fn(),
     showErrorMessage: jest.fn(),
     showInformationMessage: jest.fn(),
     showInputBox: jest.fn(),
+    showQuickPick: jest.fn(),
     showTextDocument: jest.fn(),
     showOpenDialog: jest.fn(),
   },
   commands: {
     registerCommand: jest.fn(),
+    executeCommand: jest.fn(async () => undefined),
   },
   TreeItemCollapsibleState: {
     None: 0,
     Collapsed: 1,
     Expanded: 2,
   },
+  StatusBarAlignment: {
+    Left: 1,
+    Right: 2,
+  },
   Uri: {
+    parse: jest.fn((value: string) => ({
+      toString: () => value,
+    })),
     with: jest.fn((opts) => ({
       scheme: opts.scheme,
       path: opts.path,
     })),
+  },
+  env: {
+    openExternal: jest.fn(async () => true),
   },
   languages: {
     setTextDocumentLanguage: jest.fn(),
@@ -130,6 +150,18 @@ jest.mock('./apiClient/commands', () => ({
   SkyCmsCommandClient: jest.fn(() => mockCommandClientMethods),
 }));
 
+jest.mock('./siteManager', () => ({
+  SiteManager: jest.fn(() => ({
+    ensureInitialized: jest.fn(async () => {}),
+    getActiveSite: jest.fn(async () => ({ id: 'site-1', name: 'Default', editorUrl: 'https://editor.example.com' })),
+    getTokenSecretKey: jest.fn(() => 'skycms.bearerToken.site-1'),
+    getSites: jest.fn(async () => [{ id: 'site-1', name: 'Default', editorUrl: 'https://editor.example.com' }]),
+    addSite: jest.fn(async () => ({ id: 'site-2', name: 'Second', editorUrl: 'https://editor2.example.com' })),
+    setActiveSite: jest.fn(async () => ({ id: 'site-1', name: 'Default', editorUrl: 'https://editor.example.com' })),
+    removeSite: jest.fn(async () => ({ id: 'site-1', name: 'Default', editorUrl: 'https://editor.example.com' })),
+  })),
+}));
+
 const vscode = require('vscode');
 
 // Helpers to capture registered callbacks after activate()
@@ -149,6 +181,7 @@ function getSaveHandler(): (e: unknown) => void {
 function makeContext() {
   return {
     secrets: { get: jest.fn(async () => undefined), store: jest.fn(), delete: jest.fn() },
+    globalState: { get: jest.fn(), update: jest.fn(async () => {}) },
     subscriptions: [] as { dispose(): void }[],
   };
 }
@@ -345,15 +378,20 @@ describe('activate', () => {
     );
   });
 
-  test('registers all four commands', async () => {
+  test('registers command handlers', async () => {
     await activate(makeContext() as any);
     const ids = (vscode.commands.registerCommand as jest.Mock).mock.calls.map(
       ([id]: [string]) => id,
     );
     expect(ids).toContain('skycms.signIn');
     expect(ids).toContain('skycms.signOut');
+    expect(ids).toContain('skycms.addSite');
+    expect(ids).toContain('skycms.switchSite');
+    expect(ids).toContain('skycms.removeSite');
+    expect(ids).toContain('skycms.manageSites');
     expect(ids).toContain('skycms.refresh');
     expect(ids).toContain('skycms.openField');
+    expect(ids).toContain('skycms.preview');
     expect(ids).toContain('skycms.publishArticle');
     expect(ids).toContain('skycms.unpublishArticle');
     expect(ids).toContain('skycms.newArticle');
@@ -367,11 +405,11 @@ describe('activate', () => {
     expect(ids).toContain('skycms.newFolder');
   });
 
-  test('shows warning when editorUrl is not configured', async () => {
+  test('does not warn when an active site is available', async () => {
     vscode.workspace.getConfiguration.mockReturnValue({ get: jest.fn(() => '') });
     await activate(makeContext() as any);
-    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
-      expect.stringContaining('skycms.editorUrl'),
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalledWith(
+      expect.stringContaining('No SkyCMS site is configured yet'),
     );
   });
 });

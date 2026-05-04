@@ -21,6 +21,10 @@ export interface JsonRequestOptions {
   body?: unknown;
 }
 
+function isLocalhost(hostname: string): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+}
+
 export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
   const url = new URL(options.path, options.baseUrl);
   const transport = url.protocol === 'https:' ? https : http;
@@ -48,6 +52,9 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
         port: url.port || (url.protocol === 'https:' ? 443 : 80),
         path: `${url.pathname}${url.search}`,
         headers,
+        // Node.js does not use the OS certificate store, so self-signed dev certs on
+        // localhost are rejected even when trusted system-wide. Allow them explicitly.
+        ...(url.protocol === 'https:' && isLocalhost(url.hostname) ? { rejectUnauthorized: false } : {}),
       },
       (res) => {
         const chunks: Buffer[] = [];
@@ -125,6 +132,7 @@ export async function requestRaw(options: RawRequestOptions): Promise<void> {
         port: url.port || (url.protocol === 'https:' ? 443 : 80),
         path: `${url.pathname}${url.search}`,
         headers,
+        ...(url.protocol === 'https:' && isLocalhost(url.hostname) ? { rejectUnauthorized: false } : {}),
       },
       (res) => {
         const chunks: Buffer[] = [];

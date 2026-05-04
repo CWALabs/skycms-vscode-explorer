@@ -1,18 +1,25 @@
 
 import * as vscode from 'vscode';
 import { SkyCmsQueryClient } from './apiClient/queries';
-import { ArticleSummary, EntityType, FieldDescriptor, InteractionMode, LayoutSummary, TemplateSummary } from './types';
+import { ArticleSummary, BlogPostSummary, BlogSummary, EntityType, FieldDescriptor, InteractionMode, LayoutSummary, TemplateSummary } from './types';
+import { SiteManager } from './siteManager';
 
 export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
   private readonly queryClient: SkyCmsQueryClient;
   private readonly getToken: () => Promise<string | undefined>;
+  private readonly siteManager: SiteManager;
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<SkyCmsNode | undefined>();
 
   public readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
 
-  public constructor(queryClient: SkyCmsQueryClient, getToken: () => Promise<string | undefined>) {
+  public constructor(
+    queryClient: SkyCmsQueryClient,
+    getToken: () => Promise<string | undefined>,
+    siteManager: SiteManager,
+  ) {
     this.queryClient = queryClient;
     this.getToken = getToken;
+    this.siteManager = siteManager;
   }
 
   public refresh(): void {
@@ -31,10 +38,19 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
     }
 
     if (!element) {
+      // Return the root node with site name indicator
+      const activeSite = await this.siteManager.getActiveSite();
+      const rootLabel = activeSite ? `SkyCMS (${activeSite.name})` : 'SkyCMS';
+      return [SkyCmsNode.root(rootLabel)];
+    }
+
+    // Handle root node - return category children
+    if (element.kind === 'root') {
       return [
         SkyCmsNode.category('Layouts', 'layouts'),
         SkyCmsNode.category('Page Templates', 'templates'),
         SkyCmsNode.category('Articles', 'articles'),
+        SkyCmsNode.blogsCategory(),
         SkyCmsNode.filesCategory(),
       ];
     }
@@ -46,6 +62,12 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
         return this.getFilesCategoryChildren();
       case 'folder':
         return element.path ? this.getFolderChildren(element.path) : [];
+      case 'blogs-category':
+        return this.getBlogsChildren();
+      case 'blog':
+        return element.blog ? this.getBlogPostChildren(element.blog.blogKey) : [];
+      case 'blog-post':
+        return element.blogPost ? this.getBlogPostFields(element.blogPost) : [];
       case 'layout':
         return element.layout ? this.getLayoutFields(element.layout) : [];
       case 'template':
@@ -66,7 +88,9 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
       return [];
     }
 
-    return [SkyCmsNode.signIn()];
+    // Return empty — the viewsWelcome contribution in package.json handles
+    // the "Add Site" / "Sign In" prompts directly in the panel.
+    return [];
   }
 
   private async getCategoryChildren(category: SkyCmsNode): Promise<SkyCmsNode[]> {
@@ -131,6 +155,29 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
     return descriptors.map((descriptor) => SkyCmsNode.field(entityType, entityId, descriptor, entityLabel));
   }
 
+  private async getBlogsChildren(): Promise<SkyCmsNode[]> {
+    const blogs = await this.queryClient.getBlogs();
+    return blogs.map((blog) => SkyCmsNode.blog(blog));
+  }
+
+  private async getBlogPostChildren(blogKey: string): Promise<SkyCmsNode[]> {
+    const posts = await this.queryClient.getBlogPosts(blogKey);
+    return posts.map((post) => SkyCmsNode.blogPost(post));
+  }
+
+  private getBlogPostFields(post: BlogPostSummary): SkyCmsNode[] {
+    return this.buildFieldNodes('articles', String(post.articleNumber), [
+      { key: 'published', label: 'Published', interactionMode: 'input' },
+      { key: 'title', label: 'Title', interactionMode: 'input' },
+      { key: 'bannerImage', label: 'Banner Image', interactionMode: 'input' },
+      { key: 'category', label: 'Category', interactionMode: 'input' },
+      { key: 'introduction', label: 'Introduction', interactionMode: 'doc' },
+      { key: 'content', label: 'Content', interactionMode: 'doc' },
+      { key: 'headerJavaScript', label: 'Header JS', interactionMode: 'doc' },
+      { key: 'footerJavaScript', label: 'Footer JS', interactionMode: 'doc' },
+    ], post.title);
+  }
+
   private async getFilesCategoryChildren(): Promise<SkyCmsNode[]> {
     try {
       const entries = await this.queryClient.getFilesList('/pub');
@@ -158,11 +205,13 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
 }
 
 export class SkyCmsNode extends vscode.TreeItem {
-  public kind: 'sign-in' | 'category' | 'files-category' | 'folder' | 'file' | 'layout' | 'template' | 'article-group' | 'article' | 'field';
+  public kind: 'root' | 'sign-in' | 'category' | 'files-category' | 'blogs-category' | 'folder' | 'file' | 'layout' | 'template' | 'article-group' | 'article' | 'blog' | 'blog-post' | 'field';
   public category?: EntityType;
   public layout?: LayoutSummary;
   public template?: TemplateSummary;
   public article?: ArticleSummary;
+  public blog?: BlogSummary;
+  public blogPost?: BlogPostSummary;
   public groupName?: string;
   public articles?: ArticleSummary[];
   public entityType?: EntityType;
@@ -180,6 +229,13 @@ export class SkyCmsNode extends vscode.TreeItem {
   ) {
     super(label, collapsibleState);
     this.kind = kind;
+  }
+
+  public static root(label: string): SkyCmsNode {
+    const node = new SkyCmsNode(label, 'root', vscode.TreeItemCollapsibleState.Expanded);
+    node.iconPath = new vscode.ThemeIcon('folder');
+    node.contextValue = 'rootNode';
+    return node;
   }
 
   public static signIn(): SkyCmsNode {
@@ -202,6 +258,27 @@ export class SkyCmsNode extends vscode.TreeItem {
   public static filesCategory(): SkyCmsNode {
     const node = new SkyCmsNode('Files', 'files-category', vscode.TreeItemCollapsibleState.Collapsed);
     node.contextValue = 'filesCategoryNode';
+    return node;
+  }
+
+  public static blogsCategory(): SkyCmsNode {
+    const node = new SkyCmsNode('Blogs', 'blogs-category', vscode.TreeItemCollapsibleState.Collapsed);
+    node.contextValue = 'blogsCategoryNode';
+    return node;
+  }
+
+  public static blog(blog: BlogSummary): SkyCmsNode {
+    const node = new SkyCmsNode(blog.name, 'blog', vscode.TreeItemCollapsibleState.Collapsed);
+    node.blog = blog;
+    node.contextValue = 'blogNode';
+    return node;
+  }
+
+  public static blogPost(post: BlogPostSummary): SkyCmsNode {
+    const node = new SkyCmsNode(post.title, 'blog-post', vscode.TreeItemCollapsibleState.Collapsed);
+    node.blogPost = post;
+    node.description = post.isPublished ? 'published' : 'draft';
+    node.contextValue = 'blogPostNode';
     return node;
   }
 

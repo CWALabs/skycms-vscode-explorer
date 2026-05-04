@@ -1,4 +1,5 @@
 export interface LayoutSummary {
+  id?: string;
   layoutNumber: number;
   version: number;
   name: string;
@@ -12,6 +13,7 @@ export interface TemplateSummary {
 }
 
 export interface ArticleSummary {
+  id?: string;
   articleNumber: number;
   title: string;
   articleType?: string | number | null;
@@ -20,6 +22,19 @@ export interface ArticleSummary {
 export interface ArticleGroups {
   drafts: ArticleSummary[];
   published: ArticleSummary[];
+}
+
+export interface BlogSummary {
+  articleNumber: number;
+  name: string;
+  blogKey: string;
+}
+
+export interface BlogPostSummary {
+  id?: string;
+  articleNumber: number;
+  title: string;
+  isPublished: boolean;
 }
 
 export type EntityType = 'layouts' | 'templates' | 'articles';
