@@ -72,7 +72,20 @@ export const window = {
 	showInputBox: jest.fn(),
 	showTextDocument: jest.fn(),
 	registerTreeDataProvider: jest.fn(() => ({ dispose: jest.fn() })),
+	registerUriHandler: jest.fn(() => ({ dispose: jest.fn() })),
+	withProgress: jest.fn(async (_options: unknown, task: (progress: unknown, token: unknown) => Promise<unknown>) => {
+		return task(
+			{ report: jest.fn() },
+			{ isCancellationRequested: false, onCancellationRequested: jest.fn() },
+		);
+	}),
 };
+
+export const ProgressLocation = {
+	Notification: 15,
+	Window: 10,
+	SourceControl: 1,
+} as const;
 
 export const workspace = {
 	getConfiguration: jest.fn(() => ({ get: jest.fn(() => '') })),
@@ -83,6 +96,7 @@ export const workspace = {
 
 export const commands = {
 	registerCommand: jest.fn(() => ({ dispose: jest.fn() })),
+	executeCommand: jest.fn(async () => undefined),
 };
 
 export const env = {

@@ -96,9 +96,9 @@ export class SkyCmsFileSystemProvider implements vscode.FileSystemProvider {
     try {
       const content = await this.queryClient.readFile(path);
 
-      // If content is a string (base64), decode it
+      // Compatibility fallback: if a client returns string content, treat it as UTF-8 text.
       if (typeof content === 'string') {
-        return new Uint8Array(Buffer.from(content, 'base64'));
+        return new TextEncoder().encode(content);
       }
 
       // Otherwise it's already Uint8Array
@@ -119,7 +119,8 @@ export class SkyCmsFileSystemProvider implements vscode.FileSystemProvider {
     const path = this.uriToPath(uri);
 
     try {
-      await this.commandClient.uploadFile(path, content);
+      const stat = await this.queryClient.getFileStat(path);
+      await this.commandClient.uploadFile(path, content, stat.mimeType);
       // Invalidate the parent folder cache so the tree reflects the change
       const parentPath = path.substring(0, path.lastIndexOf('/')) || '/';
       this.folderCache.delete(parentPath);

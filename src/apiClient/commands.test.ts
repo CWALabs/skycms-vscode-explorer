@@ -180,6 +180,23 @@ describe('SkyCmsCommandClient.createArticle', () => {
   });
 });
 
+describe('SkyCmsCommandClient.createTemplate', () => {
+  test('sends POST to /api/vscode/templates', async () => {
+    mockRequestJson.mockResolvedValue({ templateId: 'tmpl-1', title: 'New Template 1', layoutNumber: 1 });
+    const client = makeClient(TOKEN);
+
+    const result = await client.createTemplate();
+
+    expect(mockRequestJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/api/vscode/templates',
+        method: 'POST',
+      }),
+    );
+    expect(result.templateId).toBe('tmpl-1');
+  });
+});
+
 describe('SkyCmsCommandClient.publishLayoutVersion', () => {
   test('sends POST to layouts/{n}/{v}/publish', async () => {
     mockRequestJson.mockResolvedValue(undefined);
@@ -309,6 +326,19 @@ describe('SkyCmsCommandClient.uploadFile', () => {
     );
     const call = mockRequestRaw.mock.calls[0][0];
     expect(call.path).toContain('/api/vscode/files/');
+  });
+
+  test('sends the provided content type', async () => {
+    mockRequestRaw.mockResolvedValue(undefined);
+    const client = makeClient(TOKEN);
+
+    await client.uploadFile('/pub/page', new Uint8Array([1, 2, 3]), 'text/html');
+
+    expect(mockRequestRaw).toHaveBeenCalledWith(
+      expect.objectContaining({
+        contentType: 'text/html',
+      }),
+    );
   });
 
   test('throws when no token', async () => {

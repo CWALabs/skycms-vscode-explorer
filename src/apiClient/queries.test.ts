@@ -84,17 +84,45 @@ describe('SkyCmsQueryClient.getTemplates', () => {
 });
 
 describe('SkyCmsQueryClient.getArticles', () => {
-  test('returns article groups from server', async () => {
-    const groups = {
-      drafts: [{ articleNumber: 1, title: 'Draft', articleType: 'General' }],
-      published: [],
-    };
-    mockRequestJson.mockResolvedValue(groups);
+  test('returns flat article list from server', async () => {
+    const articles = [
+      { articleNumber: 1, title: 'Draft', articleType: 'General', isPublished: false },
+      { articleNumber: 2, title: 'Published', articleType: 'General', isPublished: true },
+    ];
+    mockRequestJson.mockResolvedValue(articles);
     const client = makeClient(TOKEN);
 
     const result = await client.getArticles();
-    expect(result.drafts).toHaveLength(1);
-    expect(result.published).toHaveLength(0);
+    expect(result).toHaveLength(2);
+    expect(result[0].title).toBe('Draft');
+    expect(result[1].isPublished).toBe(true);
+  });
+
+  test('normalizes PascalCase keys from server payload', async () => {
+    const articles = [
+      { ArticleNumber: 10, Title: 'Pascal Case Title', ArticleType: 7, IsPublished: true, LastPublished: '2026-05-07T12:00:00Z', UrlPath: 'articles/pascal-case-title' },
+    ];
+    mockRequestJson.mockResolvedValue(articles);
+    const client = makeClient(TOKEN);
+
+    const result = await client.getArticles();
+    expect(result).toHaveLength(1);
+    expect(result[0]).toEqual({
+      articleNumber: 10,
+      title: 'Pascal Case Title',
+      urlPath: 'articles/pascal-case-title',
+      articleType: '7',
+      isPublished: true,
+      lastPublished: '2026-05-07T12:00:00Z',
+    });
+  });
+
+  test('returns empty array when server returns non-array payload', async () => {
+    mockRequestJson.mockResolvedValue({ items: [] });
+    const client = makeClient(TOKEN);
+
+    const result = await client.getArticles();
+    expect(result).toEqual([]);
   });
 });
 
@@ -134,5 +162,48 @@ describe('SkyCmsQueryClient.getInputFieldValue', () => {
 
     const result = await client.getInputFieldValue('articles', '7', 'title');
     expect(result).toBe('');
+  });
+});
+
+describe('SkyCmsQueryClient.readFile', () => {
+  test('returns UTF-8 bytes when server returns plain string content', async () => {
+    mockRequestJson.mockResolvedValue('<html><body>Hello</body></html>');
+    const client = makeClient(TOKEN);
+
+    const result = await client.readFile('/index.html');
+    const decoded = new TextDecoder().decode(result);
+
+    expect(decoded).toBe('<html><body>Hello</body></html>');
+  });
+
+  test('returns decoded bytes when server returns base64-marked payload', async () => {
+    mockRequestJson.mockResolvedValue({ content: 'PGgxPkhlbGxvPC9oMT4=', isBase64: true });
+    const client = makeClient(TOKEN);
+
+    const result = await client.readFile('/index.html');
+    const decoded = new TextDecoder().decode(result);
+
+    expect(decoded).toBe('<h1>Hello</h1>');
+  });
+
+  test('returns UTF-8 bytes when server returns object content not marked as base64', async () => {
+    mockRequestJson.mockResolvedValue({ content: '<p>Plain text payload</p>' });
+    const client = makeClient(TOKEN);
+
+    const result = await client.readFile('/index.html');
+    const decoded = new TextDecoder().decode(result);
+
+    expect(decoded).toBe('<p>Plain text payload</p>');
+  });
+
+  test('serializes plain JSON objects returned by the server', async () => {
+    mockRequestJson.mockResolvedValue({ title: 'toc', items: [{ path: '/' }] });
+    const client = makeClient(TOKEN);
+
+    const result = await client.readFile('/toc.json');
+    const decoded = new TextDecoder().decode(result);
+
+    expect(decoded).toContain('"title":"toc"');
+    expect(decoded).toContain('"path":"/"');
   });
 });

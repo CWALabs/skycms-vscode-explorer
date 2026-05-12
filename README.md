@@ -1,6 +1,32 @@
 # SkyCMS Explorer
 
-A VS Code extension that brings your SkyCMS content directly into your editor. Browse articles, layouts, page templates, and blob storage files without leaving VS Code. Edit content fields and upload files. Changes save straight to SkyCMS.
+[![SkyCMS Product Site](https://img.shields.io/badge/SkyCMS-Product%20Site-0B7ACF?logo=googlechrome&logoColor=white)](https://sky-cms.com)
+[![SkyCMS Docs](https://img.shields.io/badge/Docs-docs.sky--cms.com-2EA44F?logo=readthedocs&logoColor=white)](https://docs.sky-cms.com)
+[![GitHub Repository](https://img.shields.io/badge/GitHub-CWALabs%2Fskycms--vscode--explorer-181717?logo=github&logoColor=white)](https://github.com/CWALabs/skycms-vscode-explorer)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+A VS Code extension that brings your [SkyCMS](https://sky-cms.com) content directly into your editor. Browse articles, layouts, page templates, and blob storage files without leaving VS Code. Edit content fields and upload files. Changes save straight to SkyCMS.
+
+## Quick links
+
+- Product website: [sky-cms.com](https://sky-cms.com)
+- Documentation website: [docs.sky-cms.com](https://docs.sky-cms.com)
+- Extension repository: [github.com/CWALabs/skycms-vscode-explorer](https://github.com/CWALabs/skycms-vscode-explorer)
+
+---
+
+## Features at a glance
+
+- Connect and switch between multiple SkyCMS Editor sites.
+- Sign in through a secure browser verification flow.
+- Browse layouts, page templates, articles, and files in a dedicated SkyCMS tree.
+- Edit content fields in either document-tab or inline-input modes.
+- Manage key lifecycle actions such as article publish and unpublish.
+- Work with `/pub` storage directly from VS Code (open, save, upload, rename, move, delete).
+
+For a guided walkthrough, see the docs page:
+
+- [SkyCMS VS Code Extension Guide](https://docs.sky-cms.com/for-developers/extending/vscode-extension/)
 
 ---
 
@@ -44,14 +70,13 @@ You can also trigger sign-in from the Command Palette: **SkyCMS: Sign In**.
 
 ## The SkyCMS Panel
 
-After signing in, the SkyCMS panel shows five top-level categories:
+After signing in, the SkyCMS panel shows four top-level categories:
 
 | Category | Contents |
-|---|---|
+| --- | --- |
 | **Layouts** | Your site layouts and their versions |
 | **Page Templates** | Reusable page templates |
-| **Articles** | Blog or content articles, split into Drafts and Published |
-| **Blogs** | Blog streams and their blog posts |
+| **Articles** | Content articles and blog posts (blog posts show a `(Blog)` suffix) |
 | **Files** | Blob storage file tree, rooted at `/pub` |
 
 Click any category to expand it. Click any item inside to expand it further.
@@ -60,14 +85,14 @@ Click any category to expand it. Click any item inside to expand it further.
 
 ## Articles
 
-Expand **Articles** to see two groups: **Drafts** and **Published**. Articles are sorted alphabetically within each group.
+Expand **Articles** to see all content items in one list. Items are sorted alphabetically and still show status in their label (for example, `(Draft)` or `(Published)`).
 
 ### Editing article fields
 
 Click an article to expand it. Each article has these fields:
 
 | Field | How it opens |
-|---|---|
+| --- | --- |
 | Published | Inline input box |
 | Title | Inline input box |
 | Banner Image | Inline input box |
@@ -81,14 +106,14 @@ Click any field to open it. See [Editing fields](#editing-fields) below for how 
 
 ### Creating an article
 
-Run **SkyCMS: New Article** from the Command Palette. Enter a title and press **Enter**. The article appears in Drafts.
+Run **SkyCMS: New Article** from the Command Palette. Enter a title and press **Enter**. The article appears under **Articles**.
 
 ### Publishing and unpublishing
 
 Right-click an article in the tree to see these options:
 
-- **Publish Article** — makes the article publicly visible. VS Code asks you to confirm before publishing.
-- **Unpublish Article** — moves the article back to Drafts and removes it from public view. VS Code asks you to confirm.
+- **Publish** — makes the article publicly visible. VS Code asks you to confirm before publishing.
+- **Unpublish** — moves the article back to draft state and removes it from public view. VS Code asks you to confirm.
 
 ---
 
@@ -101,7 +126,7 @@ Expand **Layouts** to see your site layouts. Each layout can have multiple versi
 Click a layout version to expand it. Each version has these fields:
 
 | Field | How it opens |
-|---|---|
+| --- | --- |
 | Layout Name | Inline input box |
 | Notes | Editor tab |
 | Head | Editor tab |
@@ -123,7 +148,7 @@ Right-click a layout version to see these options:
 Expand **Page Templates** to see your templates. Click a template to expand it. Each template has these fields:
 
 | Field | How it opens |
-|---|---|
+| --- | --- |
 | Title | Inline input box |
 | Content | Editor tab |
 | Description | Editor tab |
@@ -190,7 +215,7 @@ Edit the value and press **Enter** to save. Press **Escape** to cancel without s
 All SkyCMS commands are available from the Command Palette (`Ctrl+Shift+P` / `Cmd+Shift+P`).
 
 | Command | What it does |
-|---|---|
+| --- | --- |
 | **SkyCMS: Add Site** | Add a SkyCMS editor URL profile |
 | **SkyCMS: Switch Site** | Switch the active SkyCMS site |
 | **SkyCMS: Remove Site** | Remove a saved SkyCMS site |
@@ -199,6 +224,24 @@ All SkyCMS commands are available from the Command Palette (`Ctrl+Shift+P` / `Cm
 | **SkyCMS: Sign Out** | Clear your stored credentials and sign out |
 | **SkyCMS: Refresh** | Reload the tree from SkyCMS |
 | **SkyCMS: New Article** | Create a new article |
+
+---
+
+## Extension settings
+
+The extension works without required manual settings for most users.
+
+- `skycms.editorUrl` (legacy compatibility):
+  - If present in VS Code settings, it is imported automatically as the first site profile.
+  - New setups should prefer **SkyCMS: Add Site** and site profiles instead of relying on a single global URL.
+
+---
+
+## Known limitations
+
+- File and tree updates are refresh-oriented. Run **SkyCMS: Refresh** when needed.
+- Concurrent edits to the same SkyCMS field or file do not provide merge conflict UX.
+- Some preview actions depend on server-provided identifiers and can vary by environment.
 
 ---
 
@@ -227,3 +270,7 @@ The file may be a binary format (image, PDF, etc.) that is not intended for text
 ## Contributing
 
 See [docs/11-Development-Setup.md](docs/11-Development-Setup.md) for how to build and test the extension locally.
+
+## Release notes
+
+See [CHANGELOG.md](CHANGELOG.md) for version history.

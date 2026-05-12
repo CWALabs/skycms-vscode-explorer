@@ -4,6 +4,7 @@ import {
   assertArticleNode,
   assertLayoutNode,
   assertFileNode,
+  getDocumentTitlePart,
   showError,
   toPersistedInputValue,
   validateDocumentContent,
@@ -23,7 +24,10 @@ jest.mock('vscode', () => ({
     },
   },
   window: {
-    registerTreeDataProvider: jest.fn(() => ({ dispose: jest.fn() })),
+    createTreeView: jest.fn(() => ({
+      onDidChangeSelection: jest.fn(() => ({ dispose: jest.fn() })),
+      dispose: jest.fn(),
+    })),
     createStatusBarItem: jest.fn(() => ({
       text: '',
       tooltip: '',
@@ -39,10 +43,20 @@ jest.mock('vscode', () => ({
     showQuickPick: jest.fn(),
     showTextDocument: jest.fn(),
     showOpenDialog: jest.fn(),
+    registerUriHandler: jest.fn(() => ({ dispose: jest.fn() })),
+    withProgress: jest.fn(async (_options: unknown, task: any) =>
+      task({ report: jest.fn() }, { isCancellationRequested: false, onCancellationRequested: jest.fn() }),
+    ),
   },
   commands: {
     registerCommand: jest.fn(),
     executeCommand: jest.fn(async () => undefined),
+  },
+  chat: {
+    createChatParticipant: jest.fn(() => ({
+      followupProvider: undefined,
+      dispose: jest.fn(),
+    })),
   },
   TreeItemCollapsibleState: {
     None: 0,
@@ -54,6 +68,11 @@ jest.mock('vscode', () => ({
     Right: 2,
   },
   Uri: {
+    from: jest.fn((value: { scheme: string; path: string }) => ({
+      scheme: value.scheme,
+      path: value.path,
+      authority: '',
+    })),
     parse: jest.fn((value: string) => ({
       toString: () => value,
     })),
@@ -100,6 +119,22 @@ jest.mock('./documentProvider', () => ({
   SkyCmsDocumentProvider: jest.fn(() => mockDocumentProviderInstance),
 }));
 
+const mockFieldFileSystemProviderInstance = {
+  stat: jest.fn(),
+  readFile: jest.fn(async () => new TextEncoder().encode('')),
+  writeFile: jest.fn(async () => {}),
+  readDirectory: jest.fn(),
+  createDirectory: jest.fn(),
+  delete: jest.fn(),
+  rename: jest.fn(),
+  watch: jest.fn(() => ({ dispose: jest.fn() })),
+  notifyChanged: jest.fn(),
+  onDidChangeFile: jest.fn(),
+};
+jest.mock('./fieldFileSystemProvider', () => ({
+  SkyCmsFieldFileSystemProvider: jest.fn(() => mockFieldFileSystemProviderInstance),
+}));
+
 const mockFileSystemProviderInstance = {
   stat: jest.fn(),
   readDirectory: jest.fn(),
@@ -126,6 +161,7 @@ jest.mock('./apiClient/queries', () => ({
     getArticles: jest.fn(),
     getDocumentFieldContent: jest.fn(),
     getInputFieldValue: jest.fn(),
+    getFileStat: jest.fn(async () => ({ size: 0, mtime: Date.now(), isDir: false, mimeType: 'text/plain' })),
   })),
 }));
 
@@ -137,6 +173,7 @@ const mockCommandClientMethods = {
   publishArticle: jest.fn(async () => {}),
   unpublishArticle: jest.fn(async () => {}),
   createArticle: jest.fn(async () => ({ articleNumber: 42, title: 'New Article' })),
+  createTemplate: jest.fn(async () => ({ templateId: 't-1', title: 'New Template 5', layoutNumber: 1 })),
   publishLayoutVersion: jest.fn(async () => {}),
   setDefaultLayoutVersion: jest.fn(async () => {}),
   duplicateLayoutVersion: jest.fn(async () => ({ layoutNumber: 1, version: 2 })),
@@ -173,10 +210,6 @@ function getCommandHandler(commandId: string): (...args: unknown[]) => unknown {
   return call[1] as (...args: unknown[]) => unknown;
 }
 
-function getSaveHandler(): (e: unknown) => void {
-  const call = (vscode.workspace.onWillSaveTextDocument as jest.Mock).mock.calls[0];
-  return call[0] as (e: unknown) => void;
-}
 
 function makeContext() {
   return {
@@ -236,6 +269,40 @@ describe('validateInputValue', () => {
     const result = validateInputValue('published', 'not-a-date');
     expect(result).toBeDefined();
     expect(result).toContain('ISO 8601');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// getDocumentTitlePart
+// ---------------------------------------------------------------------------
+describe('getDocumentTitlePart', () => {
+  test('returns generic Layout title for editable layout fields', () => {
+    const title = getDocumentTitlePart({
+      entityType: 'layouts',
+      layoutVersionNumber: undefined,
+      entityLabel: 'Some Long Layout Name',
+    } as any);
+
+    expect(title).toBe('Layout');
+  });
+
+  test('returns Layout Version N title for layout history fields', () => {
+    const title = getDocumentTitlePart({
+      entityType: 'layouts',
+      layoutVersionNumber: 3,
+      entityLabel: 'Some Long Layout Name',
+    } as any);
+
+    expect(title).toBe('Layout Version 3');
+  });
+
+  test('keeps entity label for non-layout fields', () => {
+    const title = getDocumentTitlePart({
+      entityType: 'articles',
+      entityLabel: 'My Article',
+    } as any);
+
+    expect(title).toBe('My Article');
   });
 });
 
@@ -336,7 +403,7 @@ describe('showError', () => {
   test('shows HTTP status for HttpError', () => {
     showError('Save failed.', new HttpError(403, 'Forbidden'));
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      expect.stringContaining('HTTP 403'),
+      expect.stringContaining('do not have permission'),
     );
   });
 
@@ -347,9 +414,11 @@ describe('showError', () => {
     );
   });
 
-  test('shows prefix only for unknown thrown value', () => {
+  test('shows prefix with message for unknown thrown value', () => {
     showError('Unknown error.', 42);
-    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith('Unknown error.');
+    expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Unknown error.'),
+    );
   });
 });
 
@@ -362,18 +431,19 @@ describe('activate', () => {
     vscode.workspace.getConfiguration.mockReturnValue({ get: jest.fn(() => 'https://editor.example.com') });
   });
 
-  test('registers tree data provider', async () => {
+  test('registers tree view', async () => {
     await activate(makeContext() as any);
-    expect(vscode.window.registerTreeDataProvider).toHaveBeenCalledWith(
+    expect(vscode.window.createTreeView).toHaveBeenCalledWith(
       'skycmsExplorer',
-      expect.anything(),
+      expect.objectContaining({ treeDataProvider: expect.anything() }),
     );
   });
 
-  test('registers text document content provider for skycms scheme', async () => {
+  test('registers file system provider for skycms scheme', async () => {
     await activate(makeContext() as any);
-    expect(vscode.workspace.registerTextDocumentContentProvider).toHaveBeenCalledWith(
+    expect(vscode.workspace.registerFileSystemProvider).toHaveBeenCalledWith(
       'skycms',
+      expect.anything(),
       expect.anything(),
     );
   });
@@ -395,14 +465,28 @@ describe('activate', () => {
     expect(ids).toContain('skycms.publishArticle');
     expect(ids).toContain('skycms.unpublishArticle');
     expect(ids).toContain('skycms.newArticle');
+    expect(ids).toContain('skycms.newTemplate');
     expect(ids).toContain('skycms.publishLayoutVersion');
     expect(ids).toContain('skycms.setDefaultLayoutVersion');
     expect(ids).toContain('skycms.duplicateLayoutVersion');
+    expect(ids).toContain('skycms.diffLayoutVersion');
     expect(ids).toContain('skycms.openFile');
     expect(ids).toContain('skycms.deleteFile');
     expect(ids).toContain('skycms.deleteFolder');
     expect(ids).toContain('skycms.uploadFile');
     expect(ids).toContain('skycms.newFolder');
+    expect(ids).toContain('skycms.openDocs');
+    expect(ids).toContain('skycms.switchFieldLanguage');
+    expect(ids).toContain('skycms.openEditorSite');
+    expect(ids).toContain('skycms.askSkyCms');
+  });
+
+  test('registers the SkyCMS chat participant', async () => {
+    await activate(makeContext() as any);
+    expect(vscode.chat.createChatParticipant).toHaveBeenCalledWith(
+      'skycms-explorer.skycms',
+      expect.any(Function),
+    );
   });
 
   test('does not warn when an active site is available', async () => {
@@ -437,33 +521,49 @@ describe('skycms.signOut command', () => {
 });
 
 // ---------------------------------------------------------------------------
-// onWillSaveTextDocument — skycms:// documents only
+// skycms.askSkyCms command
 // ---------------------------------------------------------------------------
-describe('onWillSaveTextDocument', () => {
+describe('skycms.askSkyCms command', () => {
   beforeEach(async () => {
     jest.clearAllMocks();
     vscode.workspace.getConfiguration.mockReturnValue({ get: jest.fn(() => 'https://editor.example.com') });
     await activate(makeContext() as any);
   });
 
-  test('ignores non-skycms documents', () => {
-    const handler = getSaveHandler();
-    const event = { document: { uri: { scheme: 'file' } }, waitUntil: jest.fn() };
-    handler(event);
-    expect(event.waitUntil).not.toHaveBeenCalled();
+  test('opens chat with a seeded @skycms query', async () => {
+    const handler = getCommandHandler('skycms.askSkyCms');
+    await handler();
+
+    expect(vscode.commands.executeCommand).toHaveBeenCalledWith('workbench.action.chat.open', {
+      query: '@skycms ',
+      isPartialQuery: true,
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// SkyCmsFieldFileSystemProvider handles field saves (replaces onWillSaveTextDocument)
+// ---------------------------------------------------------------------------
+describe('SkyCmsFieldFileSystemProvider registration', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    vscode.workspace.getConfiguration.mockReturnValue({ get: jest.fn(() => 'https://editor.example.com') });
+    await activate(makeContext() as any);
   });
 
-  test('calls waitUntil for skycms:// documents', () => {
-    const handler = getSaveHandler();
-    const event = {
-      document: {
-        uri: { scheme: 'skycms', authority: 'articles', path: '/1/content' },
-        getText: jest.fn(() => '<p>content</p>'),
-      },
-      waitUntil: jest.fn(),
-    };
-    handler(event);
-    expect(event.waitUntil).toHaveBeenCalled();
+  test('registers field file system provider for skycms scheme', () => {
+    expect(vscode.workspace.registerFileSystemProvider).toHaveBeenCalledWith(
+      'skycms',
+      expect.anything(),
+      expect.objectContaining({ isCaseSensitive: true }),
+    );
+  });
+
+  test('does not register onWillSaveTextDocument for skycms scheme', () => {
+    // Save is now handled by SkyCmsFieldFileSystemProvider.writeFile — no manual hook needed.
+    const willSaveCalls = (vscode.workspace.onWillSaveTextDocument as jest.Mock).mock.calls;
+    const skyomsCalls = willSaveCalls.filter(() => true); // all calls; there should be none for skycms
+    expect(skyomsCalls.length).toBe(0);
   });
 });
 
@@ -491,6 +591,11 @@ describe('assertArticleNode', () => {
 
   test('returns node when valid', () => {
     const node = { kind: 'article', article: { articleNumber: 5, title: 'Hello' } };
+    expect(assertArticleNode(node)).toBe(node);
+  });
+
+  test('returns node when valid blog stream', () => {
+    const node = { kind: 'blog-stream', article: { articleNumber: 9, title: 'Tech Blog' } };
     expect(assertArticleNode(node)).toBe(node);
   });
 });
@@ -552,6 +657,13 @@ describe('skycms.publishArticle command', () => {
     expect(mockCommandClientMethods.publishArticle).toHaveBeenCalledWith(10);
   });
 
+  test('calls commandClient.publishArticle for blog stream node', async () => {
+    vscode.window.showWarningMessage.mockResolvedValue('Publish');
+    const handler = getCommandHandler('skycms.publishArticle');
+    await handler({ kind: 'blog-stream', article: { articleNumber: 11, title: 'Tech Blog' } });
+    expect(mockCommandClientMethods.publishArticle).toHaveBeenCalledWith(11);
+  });
+
   test('refreshes tree after publishing', async () => {
     vscode.window.showWarningMessage.mockResolvedValue('Publish');
     const handler = getCommandHandler('skycms.publishArticle');
@@ -595,6 +707,13 @@ describe('skycms.unpublishArticle command', () => {
     expect(mockCommandClientMethods.unpublishArticle).toHaveBeenCalledWith(7);
   });
 
+  test('calls commandClient.unpublishArticle for blog stream node', async () => {
+    vscode.window.showWarningMessage.mockResolvedValue('Unpublish');
+    const handler = getCommandHandler('skycms.unpublishArticle');
+    await handler({ kind: 'blog-stream', article: { articleNumber: 12, title: 'Tech Blog' } });
+    expect(mockCommandClientMethods.unpublishArticle).toHaveBeenCalledWith(12);
+  });
+
   test('does not call unpublishArticle if cancelled', async () => {
     vscode.window.showWarningMessage.mockResolvedValue(undefined);
     const handler = getCommandHandler('skycms.unpublishArticle');
@@ -633,6 +752,28 @@ describe('skycms.newArticle command', () => {
 });
 
 // ---------------------------------------------------------------------------
+// skycms.newTemplate
+// ---------------------------------------------------------------------------
+describe('skycms.newTemplate command', () => {
+  beforeEach(async () => {
+    jest.clearAllMocks();
+    vscode.workspace.getConfiguration.mockReturnValue({ get: jest.fn(() => 'https://editor.example.com') });
+    await activate(makeContext() as any);
+  });
+
+  test('creates template and refreshes tree', async () => {
+    const handler = getCommandHandler('skycms.newTemplate');
+    await handler();
+
+    expect(mockCommandClientMethods.createTemplate).toHaveBeenCalled();
+    expect(mockProviderInstance.refresh).toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('New Template 5'),
+    );
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Phase 3 — skycms.publishLayoutVersion
 // ---------------------------------------------------------------------------
 describe('skycms.publishLayoutVersion command', () => {
@@ -659,6 +800,17 @@ describe('skycms.publishLayoutVersion command', () => {
     const handler = getCommandHandler('skycms.publishLayoutVersion');
     await handler(makeLayoutNode());
     expect(mockCommandClientMethods.publishLayoutVersion).not.toHaveBeenCalled();
+  });
+
+  test('publishes selected history version from layout-version node', async () => {
+    vscode.window.showWarningMessage.mockResolvedValue('Publish');
+    const handler = getCommandHandler('skycms.publishLayoutVersion');
+    await handler({
+      kind: 'layout-version',
+      layout: { layoutNumber: 3, version: 2, name: 'Main Layout' },
+      layoutVersion: { layoutNumber: 3, version: 1, name: 'Main Layout' },
+    });
+    expect(mockCommandClientMethods.publishLayoutVersion).toHaveBeenCalledWith(3, 1);
   });
 });
 

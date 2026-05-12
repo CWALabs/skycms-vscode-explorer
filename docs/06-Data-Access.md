@@ -372,6 +372,8 @@ Returns all articles, grouped by lifecycle state.
 
 Returns the main HTML content body of an article. The server resolves which version is editable.
 
+If no editable draft version exists yet (for example, the latest version is already published), the server creates a new editable version automatically and returns content from that new draft.
+
 **Response (200):**
 ```json
 {
@@ -384,6 +386,8 @@ Returns the main HTML content body of an article. The server resolves which vers
 #### `PUT /api/vscode/articles/{articleNumber}/content`
 
 Saves updated article content.
+
+This endpoint always writes to the editable version. If an editable draft does not exist yet, the server creates one before saving.
 
 **Request body:** `{ "content": "..." }`
 **Response (200):** Empty body.
@@ -411,6 +415,8 @@ Sets or clears the publish date. Send `null` to unpublish.
 
 Returns the current article title.
 
+The server resolves the editable version first. If no editable draft exists, one is created automatically.
+
 **Response (200):** `{ "value": "Welcome to My Site" }`
 
 ---
@@ -418,6 +424,8 @@ Returns the current article title.
 #### `PUT /api/vscode/articles/{articleNumber}/title`
 
 Updates the article title.
+
+This endpoint updates the editable version. If an editable draft does not exist yet, the server creates one before applying the update.
 
 **Request body:** `{ "value": "Updated Title" }`
 **Response (200):** Empty body.

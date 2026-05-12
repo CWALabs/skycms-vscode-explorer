@@ -1,15 +1,21 @@
 import * as https from 'https';
 import * as http from 'http';
 import { URL } from 'url';
+import { logError, logInfo } from '../log';
 
 export class HttpError extends Error {
   public readonly status: number;
   public readonly body: unknown;
+  public readonly method: string;
+  public readonly path: string;
 
-  public constructor(status: number, message: string, body?: unknown) {
+  public constructor(status: number, message: string, body?: unknown, method?: string, path?: string) {
     super(message);
     this.status = status;
     this.body = body;
+    this.method = method || 'UNKNOWN';
+    this.path = path || '';
+    Object.setPrototypeOf(this, HttpError.prototype);
   }
 }
 
@@ -19,6 +25,7 @@ export interface JsonRequestOptions {
   method: 'GET' | 'POST' | 'PUT' | 'DELETE';
   token?: string;
   body?: unknown;
+  timeoutMs?: number;
 }
 
 function isLocalhost(hostname: string): boolean {
@@ -28,6 +35,7 @@ function isLocalhost(hostname: string): boolean {
 export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
   const url = new URL(options.path, options.baseUrl);
   const transport = url.protocol === 'https:' ? https : http;
+  logInfo(`HTTP ${options.method} ${url.toString()}`);
 
   const bodyString = options.body === undefined ? undefined : JSON.stringify(options.body);
 
@@ -45,6 +53,7 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
   }
 
   return new Promise<T>((resolve, reject) => {
+    const timeoutMs = options.timeoutMs ?? 20_000;
     const req = transport.request(
       {
         method: options.method,
@@ -52,6 +61,7 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
         port: url.port || (url.protocol === 'https:' ? 443 : 80),
         path: `${url.pathname}${url.search}`,
         headers,
+        timeout: timeoutMs,
         // Node.js does not use the OS certificate store, so self-signed dev certs on
         // localhost are rejected even when trusted system-wide. Allow them explicitly.
         ...(url.protocol === 'https:' && isLocalhost(url.hostname) ? { rejectUnauthorized: false } : {}),
@@ -72,12 +82,27 @@ export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
             return;
           }
 
-          reject(new HttpError(status, `HTTP ${status} for ${options.method} ${options.path}`, parsed));
+          reject(new HttpError(
+            status,
+            `HTTP ${status} for ${options.method} ${options.path}`,
+            parsed,
+            options.method,
+            options.path,
+          ));
         });
       },
     );
 
-    req.on('error', reject);
+    req.on('error', (error) => {
+      logError(`HTTP error for ${options.method} ${options.path}`, error);
+      reject(error);
+    });
+    req.on('timeout', () => {
+      const seconds = Math.round(timeoutMs / 1000);
+      const timeoutError = new Error(`Request timed out after ${seconds}s: ${options.method} ${options.path}`);
+      logError('HTTP timeout', timeoutError);
+      req.destroy(timeoutError);
+    });
 
     if (bodyString !== undefined) {
       req.write(bodyString);

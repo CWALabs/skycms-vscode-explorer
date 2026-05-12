@@ -9,6 +9,8 @@ export interface SkyCmsSiteProfile {
   editorUrl: string;
   isDefault?: boolean;
   lastUsedAt?: string;
+  websiteTitle?: string;
+  publicUrl?: string;
 }
 
 export class SiteManager {
@@ -144,6 +146,20 @@ export class SiteManager {
 
   public getTokenSecretKey(siteId: string): string {
     return `skycms.bearerToken.${siteId}`;
+  }
+
+  public async updateSiteMetadata(
+    siteId: string,
+    websiteTitle: string | undefined,
+    publicUrl: string | undefined,
+  ): Promise<void> {
+    const sites = await this.getSites();
+    const updated = sites.map((site) =>
+      site.id === siteId
+        ? { ...site, websiteTitle: websiteTitle ?? site.websiteTitle, publicUrl: publicUrl ?? site.publicUrl }
+        : site,
+    );
+    await this.saveSites(updated);
   }
 
   private getActiveSiteId(): string | undefined {

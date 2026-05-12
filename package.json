@@ -1,46 +1,37 @@
-
 {
   "name": "skycms-explorer",
   "displayName": "SkyCMS Explorer",
-  "description": "Developer-first VS Code Explorer for SkyCMS websites. Manage your sites, articles, layouts, and files directly from VS Code.",
-  "version": "0.0.2",
-  "publisher": "Creative Web Arts",
+  "description": "Developer-first VS Code Explorer for SkyCMS websites. Manage your sites, articles, layouts, and files directly from VS Code. Visit https://sky-cms.com to learn more.",
+  "version": "0.9.37",
+  "publisher": "cwalabs",
+  "homepage": "https://sky-cms.com",
+  "author": {
+    "name": "Custom Web Arts",
+    "url": "https://github.com/CWALabs"
+  },
   "license": "MIT",
   "icon": "images/icon.png",
   "repository": {
     "type": "git",
     "url": "https://github.com/CWALabs/skycms-vscode-explorer"
   },
-  "engines": { "vscode": "^1.85.0" },
-  "categories": ["Other"],
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
   "activationEvents": [
-    "onView:skycmsExplorer",
-    "onCommand:skycms.signIn",
-    "onCommand:skycms.signOut",
-    "onCommand:skycms.addSite",
-    "onCommand:skycms.switchSite",
-    "onCommand:skycms.removeSite",
-    "onCommand:skycms.manageSites",
-    "onCommand:skycms.refresh",
-    "onCommand:skycms.openField",
-    "onCommand:skycms.preview",
-    "onCommand:skycms.publishArticle",
-    "onCommand:skycms.unpublishArticle",
-    "onCommand:skycms.newArticle",
-    "onCommand:skycms.publishLayoutVersion",
-    "onCommand:skycms.setDefaultLayoutVersion",
-    "onCommand:skycms.duplicateLayoutVersion",
-    "onCommand:skycms.openFile",
-    "onCommand:skycms.deleteFile",
-    "onCommand:skycms.deleteFolder",
-    "onCommand:skycms.uploadFile",
-    "onCommand:skycms.newFolder"
+    "onUri"
   ],
   "main": "./dist/extension.js",
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true});require('fs').rmSync('out',{recursive:true,force:true})\"",
+    "build": "npm run compile",
+    "build:production": "npm run clean && tsc -p ./ --noEmit && node esbuild.config.mjs --production",
     "compile": "npm run clean && tsc -p ./ && node esbuild.config.mjs",
-    "watch": "tsc -watch -p ./",
+    "watch": "node esbuild.config.mjs --watch",
+    "package": "npm run build:production && vsce package",
     "test": "jest --config jest.config.js --passWithNoTests",
     "test:coverage": "jest --config jest.config.js --coverage",
     "test:watch": "jest --config jest.config.js --watch",
@@ -50,6 +41,7 @@
     "@types/jest": "^29.5.14",
     "@types/node": "^20.14.11",
     "@types/vscode": "^1.85.0",
+    "@vscode/vsce": "^3.9.1",
     "esbuild": "^0.25.0",
     "jest": "^29.7.0",
     "ts-jest": "^29.2.5",
@@ -58,72 +50,137 @@
   "contributes": {
     "views": {
       "explorer": [
-        { "id": "skycmsExplorer", "name": "SkyCMS" }
+        {
+          "id": "skycmsExplorer",
+          "name": "SkyCMS",
+          "initiallyCollapsed": true
+        }
       ]
     },
     "viewsWelcome": [
       {
         "view": "skycmsExplorer",
-        "contents": "No SkyCMS site is configured yet.\n[Add Site](command:skycms.addSite)\nYou can add as many sites as you need and switch between them at any time.",
+        "contents": "No SkyCMS site is configured yet.\n[Add Site](command:skycms.addSite)\nYou can add as many sites as you need and switch between them at any time.\n\n**Tip:** Drag this panel just below the File Explorer for the best experience — SkyCMS Explorer is a virtual website view that pairs naturally with the real file view above it.\n\n[Documentation](https://docs.sky-cms.com/)",
         "when": "skycms.hasSite == false"
-      },
+      }
+    ],
+    "chatInstructions": [
       {
-        "view": "skycmsExplorer",
-        "contents": "Sign in to connect to SkyCMS.\n[Sign In](command:skycms.signIn)",
-        "when": "skycms.hasSite == true && skycms.isSignedIn == false"
+        "path": "./prompts/skycms.instructions.md"
+      }
+    ],
+    "chatParticipants": [
+      {
+        "id": "skycms-explorer.skycms",
+        "name": "skycms",
+        "fullName": "SkyCMS",
+        "description": "Ask about SkyCMS concepts, docs, and extension workflows",
+        "isSticky": true,
+        "commands": [
+          {
+            "name": "docs",
+            "description": "Point me to the SkyCMS docs for this topic"
+          },
+          {
+            "name": "explain",
+            "description": "Explain a SkyCMS concept in practical terms"
+          },
+          {
+            "name": "layouts",
+            "description": "Show the best docs for SkyCMS layouts"
+          },
+          {
+            "name": "templates",
+            "description": "Show the best docs for SkyCMS templates"
+          },
+          {
+            "name": "articles",
+            "description": "Show the best docs for articles and content flow"
+          }
+        ],
+        "disambiguation": [
+          {
+            "category": "skycms-docs",
+            "description": "Questions about SkyCMS concepts, CMS structure, layouts, templates, articles, blog posts, or where SkyCMS documentation can be found.",
+            "examples": [
+              "How do SkyCMS layouts work?",
+              "Where are the SkyCMS docs for templates?",
+              "Explain the difference between articles and blog posts in SkyCMS"
+            ]
+          }
+        ]
       }
     ],
     "commands": [
       {
         "command": "skycms.signIn",
-        "title": "SkyCMS: Sign In"
+        "title": "Sign In"
       },
       {
         "command": "skycms.signOut",
-        "title": "SkyCMS: Sign Out"
+        "title": "Sign Out"
       },
       {
         "command": "skycms.addSite",
-        "title": "SkyCMS: Add Site"
+        "title": "Add Web Site"
       },
       {
         "command": "skycms.switchSite",
-        "title": "SkyCMS: Switch Site"
+        "title": "Switch Web Site"
       },
       {
         "command": "skycms.removeSite",
-        "title": "SkyCMS: Remove Site"
+        "title": "Remove Web Site"
       },
       {
         "command": "skycms.manageSites",
-        "title": "SkyCMS: Manage Sites"
+        "title": "Manage Web Sites"
       },
       {
         "command": "skycms.refresh",
-        "title": "SkyCMS: Refresh"
+        "title": "Refresh",
+        "icon": "$(refresh)"
       },
       {
         "command": "skycms.openField",
-        "title": "SkyCMS: Open Field"
+        "title": "Open Field"
       },
       {
         "command": "skycms.preview",
-        "title": "Preview",
+        "title": "Preview Draft",
         "icon": "$(preview)"
       },
       {
         "command": "skycms.publishArticle",
-        "title": "Publish Article",
+        "title": "Publish",
         "icon": "$(cloud-upload)"
       },
       {
         "command": "skycms.unpublishArticle",
-        "title": "Unpublish Article",
+        "title": "Unpublish",
         "icon": "$(cloud-download)"
       },
       {
+        "command": "skycms.loadMoreVersions",
+        "title": "Load More Versions"
+      },
+      {
+        "command": "skycms.diffArticleVersion",
+        "title": "Compare with Current Draft",
+        "icon": "$(diff)"
+      },
+      {
+        "command": "skycms.openArticleOnPublicSite",
+        "title": "Open on Public Site",
+        "icon": "$(globe)"
+      },
+      {
         "command": "skycms.newArticle",
-        "title": "SkyCMS: New Article"
+        "title": "New Article"
+      },
+      {
+        "command": "skycms.newTemplate",
+        "title": "New Template"
       },
       {
         "command": "skycms.publishLayoutVersion",
@@ -139,6 +196,11 @@
         "command": "skycms.duplicateLayoutVersion",
         "title": "Duplicate Layout Version",
         "icon": "$(copy)"
+      },
+      {
+        "command": "skycms.diffLayoutVersion",
+        "title": "Compare With Editable",
+        "icon": "$(diff)"
       },
       {
         "command": "skycms.openFile",
@@ -163,34 +225,141 @@
         "command": "skycms.newFolder",
         "title": "New Folder Here",
         "icon": "$(new-folder)"
+      },
+      {
+        "command": "skycms.openDocs",
+        "title": "Documentation",
+        "icon": "$(book)"
+      },
+      {
+        "command": "skycms.switchFieldLanguage",
+        "title": "Switch Field Language",
+        "icon": "$(symbol-keyword)"
+      },
+      {
+        "command": "skycms.openEditorSite",
+        "title": "Editor",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "skycms.openPublicSite",
+        "title": "Public URL",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "skycms.askSkyCms",
+        "title": "Ask SkyCMS",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "skycms.showRootMenu",
+        "title": "More Actions\u2026",
+        "icon": "$(ellipsis)"
+      },
+      {
+        "command": "skycms.openLayoutsDocs",
+        "title": "Open Layouts Documentation",
+        "icon": "$(ellipsis)"
+      },
+      {
+        "command": "skycms.openTemplatesDocs",
+        "title": "Open Page Templates Documentation",
+        "icon": "$(ellipsis)"
+      },
+      {
+        "command": "skycms.openArticlesDocs",
+        "title": "Open Articles Documentation",
+        "icon": "$(ellipsis)"
+      },
+      {
+        "command": "skycms.openBlogsDocs",
+        "title": "Open Blogs Documentation",
+        "icon": "$(ellipsis)"
+      },
+      {
+        "command": "skycms.openFilesDocs",
+        "title": "Open Files Documentation",
+        "icon": "$(ellipsis)"
       }
     ],
     "menus": {
+      "editor/title": [
+        {
+          "command": "skycms.switchFieldLanguage",
+          "when": "resourceScheme == skycms",
+          "group": "navigation"
+        }
+      ],
       "view/item/context": [
         {
+          "command": "skycms.showRootMenu",
+          "when": "view == skycmsExplorer && viewItem == rootNode",
+          "group": "inline"
+        },
+        {
+          "command": "skycms.refresh",
+          "when": "view == skycmsExplorer && viewItem == rootNode",
+          "group": "navigation@1"
+        },
+        {
+          "command": "skycms.openPublicSite",
+          "when": "view == skycmsExplorer && viewItem == rootNode",
+          "group": "skycms@1"
+        },
+        {
+          "command": "skycms.openEditorSite",
+          "when": "view == skycmsExplorer && viewItem == rootNode",
+          "group": "skycms@2"
+        },
+        {
+          "command": "skycms.askSkyCms",
+          "when": "view == skycmsExplorer && viewItem == rootNode",
+          "group": "skycms@3"
+        },
+        {
           "command": "skycms.preview",
-          "when": "view == skycmsExplorer && viewItem == articleNode",
+          "when": "view == skycmsExplorer && (viewItem == articleNode || viewItem == articlePublishedNode)",
           "group": "skycms@0"
         },
         {
           "command": "skycms.publishArticle",
-          "when": "view == skycmsExplorer && viewItem == articleNode",
+          "when": "view == skycmsExplorer && (viewItem == articleNode || viewItem == articlePublishedNode)",
           "group": "skycms@1"
         },
         {
           "command": "skycms.unpublishArticle",
-          "when": "view == skycmsExplorer && viewItem == articleNode",
+          "when": "view == skycmsExplorer && viewItem == articlePublishedNode",
           "group": "skycms@2"
         },
         {
-          "command": "skycms.preview",
-          "when": "view == skycmsExplorer && viewItem == blogPostNode",
-          "group": "skycms@0"
+          "command": "skycms.openArticleOnPublicSite",
+          "when": "view == skycmsExplorer && viewItem == articlePublishedNode",
+          "group": "skycms@3"
         },
         {
           "command": "skycms.preview",
-          "when": "view == skycmsExplorer && viewItem == blogNode",
+          "when": "view == skycmsExplorer && (viewItem == blogStreamNode || viewItem == blogStreamPublishedNode)",
           "group": "skycms@0"
+        },
+        {
+          "command": "skycms.publishArticle",
+          "when": "view == skycmsExplorer && (viewItem == blogStreamNode || viewItem == blogStreamPublishedNode)",
+          "group": "skycms@1"
+        },
+        {
+          "command": "skycms.unpublishArticle",
+          "when": "view == skycmsExplorer && viewItem == blogStreamPublishedNode",
+          "group": "skycms@2"
+        },
+        {
+          "command": "skycms.openArticleOnPublicSite",
+          "when": "view == skycmsExplorer && viewItem == blogStreamPublishedNode",
+          "group": "skycms@3"
+        },
+        {
+          "command": "skycms.diffArticleVersion",
+          "when": "view == skycmsExplorer && viewItem == articleVersionNode",
+          "group": "skycms@1"
         },
         {
           "command": "skycms.preview",
@@ -213,9 +382,84 @@
           "group": "skycms@0"
         },
         {
+          "command": "skycms.openLayoutsDocs",
+          "when": "view == skycmsExplorer && viewItem == layoutsCategory",
+          "group": "inline"
+        },
+        {
+          "command": "skycms.openLayoutsDocs",
+          "when": "view == skycmsExplorer && viewItem == layoutsCategory",
+          "group": "skycms@1"
+        },
+        {
+          "command": "skycms.openTemplatesDocs",
+          "when": "view == skycmsExplorer && viewItem == templatesCategory",
+          "group": "inline"
+        },
+        {
+          "command": "skycms.openTemplatesDocs",
+          "when": "view == skycmsExplorer && viewItem == templatesCategory",
+          "group": "skycms@0"
+        },
+        {
+          "command": "skycms.newTemplate",
+          "when": "view == skycmsExplorer && viewItem == templatesCategory",
+          "group": "skycms@1"
+        },
+        {
+          "command": "skycms.openArticlesDocs",
+          "when": "view == skycmsExplorer && viewItem == articlesCategory",
+          "group": "inline"
+        },
+        {
+          "command": "skycms.openArticlesDocs",
+          "when": "view == skycmsExplorer && viewItem == articlesCategory",
+          "group": "skycms@0"
+        },
+        {
+          "command": "skycms.newArticle",
+          "when": "view == skycmsExplorer && viewItem == articlesCategory",
+          "group": "skycms@1"
+        },
+        {
+          "command": "skycms.openFilesDocs",
+          "when": "view == skycmsExplorer && viewItem == filesCategoryNode",
+          "group": "inline"
+        },
+        {
+          "command": "skycms.openFilesDocs",
+          "when": "view == skycmsExplorer && viewItem == filesCategoryNode",
+          "group": "skycms@1"
+        },
+        {
           "command": "skycms.duplicateLayoutVersion",
           "when": "view == skycmsExplorer && viewItem == layoutNode",
           "group": "skycms@3"
+        },
+        {
+          "command": "skycms.preview",
+          "when": "view == skycmsExplorer && viewItem == layoutVersionNode",
+          "group": "skycms@0"
+        },
+        {
+          "command": "skycms.publishLayoutVersion",
+          "when": "view == skycmsExplorer && viewItem == layoutVersionNode",
+          "group": "skycms@1"
+        },
+        {
+          "command": "skycms.setDefaultLayoutVersion",
+          "when": "view == skycmsExplorer && viewItem == layoutVersionNode",
+          "group": "skycms@2"
+        },
+        {
+          "command": "skycms.duplicateLayoutVersion",
+          "when": "view == skycmsExplorer && viewItem == layoutVersionNode",
+          "group": "skycms@3"
+        },
+        {
+          "command": "skycms.diffLayoutVersion",
+          "when": "view == skycmsExplorer && viewItem == layoutVersionNode",
+          "group": "skycms@4"
         },
         {
           "command": "skycms.openFile",
@@ -247,22 +491,27 @@
         {
           "command": "skycms.switchSite",
           "when": "view == skycmsExplorer",
-          "group": "navigation"
-        },
-        {
-          "command": "skycms.newArticle",
-          "when": "view == skycmsExplorer",
-          "group": "navigation"
+          "group": "skycms@1"
         },
         {
           "command": "skycms.manageSites",
           "when": "view == skycmsExplorer",
-          "group": "navigation"
+          "group": "skycms@2"
         },
         {
           "command": "skycms.refresh",
           "when": "view == skycmsExplorer",
           "group": "navigation"
+        },
+        {
+          "command": "skycms.openDocs",
+          "when": "view == skycmsExplorer",
+          "group": "skycms@4"
+        },
+        {
+          "command": "skycms.askSkyCms",
+          "when": "view == skycmsExplorer",
+          "group": "skycms@5"
         }
       ]
     },

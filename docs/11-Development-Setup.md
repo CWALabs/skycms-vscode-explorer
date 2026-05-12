@@ -97,14 +97,27 @@ The extension is bundled with **esbuild** for fast, single-file output. There is
 # Build once (development, with source maps)
 npm run build
 
-# Build in watch mode — rebuilds on every file change
+# Build in watch mode — rebuilds automatically on every file change
 npm run watch
 
-# Build for production release (minified, no source maps)
+# Build for production (minified, no source maps, type-checks first)
 npm run build:production
+
+# Package as a .vsix file ready for installation or publishing
+npm run package
 ```
 
 The output lands in `dist/extension.js`. VS Code loads this file, not the raw TypeScript.
+
+`npm run watch` uses esbuild's incremental rebuild mode. Changes appear in `dist/extension.js` within milliseconds. Reload the Extension Development Host with `Ctrl+Shift+F5` to pick up each change.
+
+`npm run package` produces a `.vsix` file (for example, `skycms-explorer-0.0.2.vsix`) in the project root. Install it locally with:
+
+```bash
+code --install-extension skycms-explorer-0.0.2.vsix
+```
+
+Or drag the file into the VS Code Extensions panel.
 
 **Why esbuild?** It is faster than Webpack, requires less configuration, and produces a smaller bundle. VS Code extensions benefit from fast build times during the inner development loop.
 

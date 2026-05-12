@@ -4,6 +4,24 @@ export interface LayoutSummary {
   version: number;
   name: string;
   isDefault?: boolean;
+  isPublished?: boolean;
+  lastPublished?: string | null;
+  published?: string | null;
+  isEditable?: boolean;
+  lastModified?: string | null;
+}
+
+export interface LayoutVersionSummary {
+  id?: string;
+  layoutNumber: number;
+  version: number;
+  name: string;
+  isDefault?: boolean;
+  isPublished?: boolean;
+  lastPublished?: string | null;
+  published?: string | null;
+  isEditable?: boolean;
+  lastModified?: string | null;
 }
 
 export interface TemplateSummary {
@@ -13,21 +31,30 @@ export interface TemplateSummary {
 }
 
 export interface ArticleSummary {
-  id?: string;
   articleNumber: number;
   title: string;
+  urlPath?: string;
   articleType?: string | number | null;
+  blogKey?: string;
+  isPublished?: boolean;
+  lastPublished?: string | null;
 }
 
-export interface ArticleGroups {
-  drafts: ArticleSummary[];
-  published: ArticleSummary[];
-}
+
 
 export interface BlogSummary {
   articleNumber: number;
   name: string;
   blogKey: string;
+}
+
+export interface ArticleVersionSummary {
+  versionId: string;
+  versionNumber: number;
+  isEditable: boolean;
+  isPublished: boolean;
+  publishedDate?: string | null;
+  updated: string;
 }
 
 export interface BlogPostSummary {
@@ -44,4 +71,5 @@ export interface FieldDescriptor {
   key: string;
   label: string;
   interactionMode: InteractionMode;
+  tooltip?: string;
 }

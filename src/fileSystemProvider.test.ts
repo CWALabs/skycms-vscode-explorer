@@ -37,7 +37,7 @@ function makeUri(path: string) {
 
 function makeQueryClient(overrides: Record<string, jest.Mock> = {}) {
   return {
-    getFileStat: jest.fn(async () => ({isDir: false, size: 100, mtime: 0})),
+    getFileStat: jest.fn(async () => ({isDir: false, size: 100, mtime: 0, mimeType: 'text/html'})),
     getFilesList: jest.fn(async () => [
       {name: 'file.txt', isDir: false, size: 50},
       {name: 'subdir', isDir: true},
@@ -149,9 +149,9 @@ describe('SkyCmsFileSystemProvider.readFile', () => {
     expect(result).toEqual(expected);
   });
 
-  test('decodes base64 string to Uint8Array', async () => {
+  test('encodes plain string content as UTF-8 bytes', async () => {
     const qc = makeQueryClient({
-      readFile: jest.fn(async () => 'aGVsbG8='), // "hello" in base64
+      readFile: jest.fn(async () => 'hello'),
     });
     const provider = new SkyCmsFileSystemProvider(qc, makeCommandClient());
 
@@ -174,7 +174,7 @@ describe('SkyCmsFileSystemProvider.writeFile', () => {
     const uri = makeUri('/pub/file.txt');
     await provider.writeFile(uri, new Uint8Array([1, 2, 3]), {create: true, overwrite: true});
 
-    expect(cc.uploadFile).toHaveBeenCalledWith('/pub/file.txt', expect.any(Uint8Array));
+    expect(cc.uploadFile).toHaveBeenCalledWith('/pub/file.txt', expect.any(Uint8Array), 'text/html');
     expect(emitter.fire).toHaveBeenCalled();
   });
 });

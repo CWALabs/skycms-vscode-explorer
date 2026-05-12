@@ -8,47 +8,45 @@ This document explains what virtual documents are, why the SkyCMS Explorer uses 
 
 ## What a Virtual Document Is
 
-In VS Code, a **virtual document** is a file that opens in an editor tab but does not correspond to a file on disk. The extension generates the content on demand and presents it to VS Code as if it were a file.
-
-Virtual documents are created using VS Code's [`TextDocumentContentProvider`](https://code.visualstudio.com/api/extension-guides/virtual-documents) API. The extension registers this provider for a custom URI scheme — in this case, `skycms://`. Whenever VS Code encounters a URI with that scheme, it asks the extension to supply the content.
+In VS Code, a **virtual document** is a file that opens in an editor tab but does not correspond to a file on disk. The extension generates the content on demand and presents it to VS Code as if it were a real file.
 
 This is the right model for SkyCMS because CMS content lives in a database, not on disk. There is no file to open. Virtual documents let the extension present that content in the editor without creating temporary files.
+
+The extension uses VS Code's [`FileSystemProvider`](https://code.visualstudio.com/api/extension-guides/virtual-documents#file-system-api) API — specifically `SkyCmsFieldFileSystemProvider` — registered for the custom `skycms:` URI scheme. This gives editor tabs full parity with real workspace files: save integration, dirty indicators, diff support, and language-aware editing all work without any custom wiring.
 
 ---
 
 ## How It Works: Reading
 
-When a developer clicks a payload node in the tree (for example, **Header** under the Default Layout), the tree sends a command to VS Code to open this URI:
+When a developer clicks a field node in the tree (for example, **Footer** under the Default Layout), the extension opens this URI:
 
 ```
-skycms://layouts/1/header
+skycms:/layouts/0/footer/Layout - Footer
 ```
 
-VS Code sees the `skycms://` scheme and asks the `SkyCmsDocumentProvider` to supply content for that URI.
+VS Code sees the `skycms:` scheme and calls `readFile` on `SkyCmsFieldFileSystemProvider`.
 
-The Document Provider:
+The provider:
 
 1. Parses the URI to identify the entity type, ID/number, version (if applicable), and field name
-2. Calls the API Client to fetch the payload from the SkyCMS API
-3. Returns the content string to VS Code
+2. Calls the API Client to fetch the field content from the SkyCMS API
+3. Returns the content as bytes to VS Code
 
-VS Code opens a new editor tab. The tab's title shows the URI (or a friendly name derived from it). The language mode is set based on the field — `html` for all layout and article fields, `plaintext` for template descriptions.
+VS Code opens a new editor tab. The tab title shows a human-readable label derived from the entity and field name (for example, `Layout - Footer`). The language mode is set based on the field — `html` for all layout and article fields, `plaintext` for template descriptions.
 
 ---
 
 ## How It Works: Saving
 
-VS Code's `TextDocumentContentProvider` is read-only by default. To support saving, the extension also registers a **custom save handler** using the [`onWillSaveTextDocument`](https://code.visualstudio.com/api/references/vscode-api#workspace.onWillSaveTextDocument) event.
+Because the extension uses `FileSystemProvider`, saving works exactly like saving a regular file on disk. No custom save command is needed.
 
-When the developer presses `Ctrl+S` (or `Cmd+S`) in a virtual document tab:
+**To save:** press `Ctrl+S` (Windows/Linux) or `Cmd+S` (macOS), or use **File → Save**. VS Code calls `writeFile` on `SkyCmsFieldFileSystemProvider`, which sends the content to the SkyCMS API.
 
-1. VS Code fires `onWillSaveTextDocument` for that document's URI
-2. The extension checks whether the URI scheme is `skycms://`
-3. If it is, the extension calls the API Client to `PUT` the current document content to the corresponding SkyCMS API endpoint
-4. On success, VS Code marks the document as clean (the "unsaved dot" disappears from the tab title)
-5. On failure, the extension shows an error notification and the document remains dirty
+**Dirty indicator:** When you edit content in a tab, VS Code automatically shows a dot (●) next to the tab title — the same dot you see when editing any workspace file. No special extension logic is needed for this; it is standard `FileSystemProvider` behavior.
 
-The developer does not lose their changes on failure — VS Code keeps the modified content in the editor until the save succeeds.
+**On failure:** If the API call fails, VS Code shows an error notification and the tab remains dirty. Your edits are not lost — VS Code keeps the modified content in the editor until the save succeeds.
+
+**Read-only tabs:** Layout version tabs (opened from the **Layout Versions** category) are intentionally read-only. `writeFile` throws `NoPermissions` for those URIs, so pressing `Ctrl+S` has no effect. These tabs are for reviewing archived versions, not editing.
 
 ---
 
@@ -91,42 +89,39 @@ The full URI specification is in [URI-Scheme.md](URI-Scheme.md).
 
 ## Tab Title
 
-By default, VS Code displays the full URI as the tab title, which would look like:
+The extension computes a human-readable label and appends it as the last segment of the URI path. VS Code decodes that segment and uses it as the tab title.
+
+The label format is:
 
 ```
-skycms://layouts/1/3/head
+{Entity} - {Field}
 ```
 
-That is readable but not friendly. The extension sets a human-readable title using the `label` property when calling `vscode.workspace.openTextDocument` and then `vscode.window.showTextDocument`. The title will be:
+For example, a layout's footer field opens with the tab title:
 
 ```
-Default Site Layout – Header
+Layout - Footer
+```
+
+A versioned layout field (read-only) uses:
+
+```
+Layout Version 3 - Head
+```
+
+For articles and templates the entity label (the actual title) is used:
+
+```
+My Article - Content
 ```
 
 ---
 
 ## Read-Only Documents
 
-Some documents should be read-only — for example, a published layout version that the user does not have permission to edit, or any entity when the user is signed in with a restricted role.
+Layout version tabs are read-only. They open from the **Layout Versions** category in the tree and show archived snapshots of a layout field. The `writeFile` handler rejects saves for these URIs with a permissions error, so `Ctrl+S` does nothing.
 
-The extension marks these documents read-only by setting `vscode.workspace.openTextDocument` with `{ content, readonly: true }` (or by returning a read-only URI). The editor shows a lock icon in the tab and prevents the user from typing.
-
-This is a Phase 2 feature; all documents in Phase 1 are editable.
-
----
-
-## Relationship to FileSystemProvider
-
-A later phase may register a `FileSystemProvider` instead of (or in addition to) the `TextDocumentContentProvider`. This would allow:
-
-- Native diff (`git diff`-style comparisons between layout versions)
-- Rename via the Explorer UI
-- Drag-and-drop between entities
-- Integration with VS Code's built-in file operations
-
-The `skycms://` URI scheme is already compatible with `FileSystemProvider`. Migrating from virtual documents to a full filesystem provider does not require changing the URI design.
-
-See [Design Principles](02-Design-Principles.md#4-domain-aware-not-filesystem-aware) for why the MVP uses virtual documents rather than a filesystem provider.
+All other document tabs (editable layout fields, template fields, article fields) are read/write.
 
 ---
 

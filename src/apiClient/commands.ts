@@ -6,10 +6,12 @@ interface BrowserAuthExchangeRequest {
   code: string;
 }
 
-interface BrowserAuthExchangeResponse {
+export interface BrowserAuthExchangeResponse {
   token: string;
   role?: string;
   displayName?: string;
+  websiteTitle?: string;
+  publicUrl?: string;
 }
 
 export class SkyCmsCommandClient {
@@ -84,6 +86,7 @@ export class SkyCmsCommandClient {
       path: `/api/vscode/articles/${articleNumber}/publish`,
       method: 'POST',
       token,
+      timeoutMs: 60_000,
     });
   }
 
@@ -94,6 +97,7 @@ export class SkyCmsCommandClient {
       path: `/api/vscode/articles/${articleNumber}/unpublish`,
       method: 'POST',
       token,
+      timeoutMs: 60_000,
     });
   }
 
@@ -105,6 +109,16 @@ export class SkyCmsCommandClient {
       method: 'POST',
       token,
       body: { title, articleType },
+    });
+  }
+
+  public async createTemplate(): Promise<{ templateId: string; title: string; layoutNumber: number }> {
+    const token = await this.getRequiredToken();
+    return requestJson<{ templateId: string; title: string; layoutNumber: number }>({
+      baseUrl: this.getRequiredBaseUrl(),
+      path: '/api/vscode/templates',
+      method: 'POST',
+      token,
     });
   }
 
@@ -171,7 +185,7 @@ export class SkyCmsCommandClient {
     });
   }
 
-  public async uploadFile(path: string, content: Uint8Array): Promise<void> {
+  public async uploadFile(path: string, content: Uint8Array, contentType?: string): Promise<void> {
     const token = await this.getRequiredToken();
     const pathHash = this.encodePathHash(path);
     await requestRaw({
@@ -180,6 +194,7 @@ export class SkyCmsCommandClient {
       method: 'POST',
       token,
       body: Buffer.from(content),
+      contentType,
     });
   }
 
