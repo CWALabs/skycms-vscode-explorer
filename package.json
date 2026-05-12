@@ -25,9 +25,15 @@
     "onUri"
   ],
   "main": "./dist/extension.js",
+  "browser": "./dist/web/extension.js",
+  "extensionKind": [
+    "workspace",
+    "ui"
+  ],
   "scripts": {
     "clean": "node -e \"require('fs').rmSync('dist',{recursive:true,force:true});require('fs').rmSync('out',{recursive:true,force:true})\"",
     "build": "npm run compile",
+    "build:web": "npm run clean && tsc -p ./ --noEmit && node esbuild.config.mjs --production --web",
     "build:production": "npm run clean && tsc -p ./ --noEmit && node esbuild.config.mjs --production",
     "compile": "npm run clean && tsc -p ./ && node esbuild.config.mjs",
     "watch": "node esbuild.config.mjs --watch",

@@ -35,6 +35,14 @@ For a guided walkthrough, see the docs page:
 - VS Code 1.85 or later
 - Access to a running SkyCMS Editor instance and its URL
 
+## Environment compatibility
+
+| Environment | Status | Notes |
+| --- | --- | --- |
+| VS Code Desktop | Supported | Full extension functionality. |
+| VS Code Remote / Codespaces | Supported | Full functionality via remote extension host. |
+| VS Code Web Host (vscode.dev without remote) | Partial | Web-host runtime scaffold is available; full SkyCMS Explorer functionality is in progress. |
+
 ---
 
 ## Setup
