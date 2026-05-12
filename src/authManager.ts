@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { SkyCmsCommandClient } from './apiClient/commands';
 import { SkyCmsQueryClient } from './apiClient/queries';
-import { HttpError } from './apiClient/http';
+import { HttpError } from './apiClient/httpError';
 import { SiteManager } from './siteManager';
 
 export class AuthManager {

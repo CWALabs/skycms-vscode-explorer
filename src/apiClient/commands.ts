@@ -193,7 +193,7 @@ export class SkyCmsCommandClient {
       path: `/api/vscode/files/${pathHash}`,
       method: 'POST',
       token,
-      body: Buffer.from(content),
+      body: content,
       contentType,
     });
   }

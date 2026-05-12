@@ -321,7 +321,7 @@ describe('SkyCmsCommandClient.uploadFile', () => {
       expect.objectContaining({
         method: 'POST',
         token: TOKEN,
-        body: expect.any(Buffer),
+        body: expect.any(Uint8Array),
       }),
     );
     const call = mockRequestRaw.mock.calls[0][0];

@@ -9,6 +9,7 @@ import {
   TemplateSummary,
 } from '../types';
 import { logInfo, logWarn } from '../log';
+import { decodeBase64ToUint8Array } from './base64';
 
 interface AuthMeResponse {
   username: string;
@@ -285,7 +286,7 @@ export class SkyCmsQueryClient {
     if (typeof response === 'object' && response !== null && 'content' in response) {
       const content = response.content ?? '';
       if (response.isBase64) {
-        return new Uint8Array(Buffer.from(content, 'base64'));
+        return decodeBase64ToUint8Array(content);
       }
 
       return new TextEncoder().encode(content);

@@ -2,37 +2,15 @@ import * as https from 'https';
 import * as http from 'http';
 import { URL } from 'url';
 import { logError, logInfo } from '../log';
-
-export class HttpError extends Error {
-  public readonly status: number;
-  public readonly body: unknown;
-  public readonly method: string;
-  public readonly path: string;
-
-  public constructor(status: number, message: string, body?: unknown, method?: string, path?: string) {
-    super(message);
-    this.status = status;
-    this.body = body;
-    this.method = method || 'UNKNOWN';
-    this.path = path || '';
-    Object.setPrototypeOf(this, HttpError.prototype);
-  }
-}
-
-export interface JsonRequestOptions {
-  baseUrl: string;
-  path: string;
-  method: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  token?: string;
-  body?: unknown;
-  timeoutMs?: number;
-}
+import { ApiTransport, JsonRequestOptions, RawRequestOptions } from './transport';
+import { webTransport } from './http.web';
+import { HttpError } from './httpError';
 
 function isLocalhost(hostname: string): boolean {
   return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
 }
 
-export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
+async function requestJsonNode<T>(options: JsonRequestOptions): Promise<T> {
   const url = new URL(options.path, options.baseUrl);
   const transport = url.protocol === 'https:' ? https : http;
   logInfo(`HTTP ${options.method} ${url.toString()}`);
@@ -120,19 +98,10 @@ function tryParseJson(text: string): unknown {
   }
 }
 
-export interface RawRequestOptions {
-  baseUrl: string;
-  path: string;
-  method: 'POST' | 'PUT' | 'DELETE';
-  token?: string;
-  body?: Buffer;
-  contentType?: string;
-}
-
 /**
  * Makes an HTTP request with a raw binary body. Used for file uploads.
  */
-export async function requestRaw(options: RawRequestOptions): Promise<void> {
+async function requestRawNode(options: RawRequestOptions): Promise<void> {
   const url = new URL(options.path, options.baseUrl);
   const transport = url.protocol === 'https:' ? https : http;
 
@@ -183,3 +152,27 @@ export async function requestRaw(options: RawRequestOptions): Promise<void> {
     req.end();
   });
 }
+
+const nodeTransport: ApiTransport = {
+  requestJson: requestJsonNode,
+  requestRaw: requestRawNode,
+};
+
+function isNodeRuntime(): boolean {
+  return typeof process !== 'undefined' && !!process.versions?.node;
+}
+
+function getActiveTransport(): ApiTransport {
+  return isNodeRuntime() ? nodeTransport : webTransport;
+}
+
+export async function requestJson<T>(options: JsonRequestOptions): Promise<T> {
+  return getActiveTransport().requestJson<T>(options);
+}
+
+export async function requestRaw(options: RawRequestOptions): Promise<void> {
+  return getActiveTransport().requestRaw(options);
+}
+
+export { JsonRequestOptions, RawRequestOptions };
+export { HttpError };

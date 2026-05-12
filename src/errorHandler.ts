@@ -1,4 +1,4 @@
-import { HttpError } from './apiClient/http';
+import { HttpError } from './apiClient/httpError';
 
 export type ErrorClassification =
   | 'network-error'

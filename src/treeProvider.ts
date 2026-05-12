@@ -13,7 +13,7 @@ import {
 } from './types';
 import { SiteManager } from './siteManager';
 import { AuthManager } from './authManager';
-import { HttpError } from './apiClient/http';
+import { HttpError } from './apiClient/httpError';
 import { logError, logInfo } from './log';
 import { ErrorHandler } from './errorHandler';
 

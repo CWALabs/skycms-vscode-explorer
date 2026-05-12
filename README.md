@@ -41,7 +41,7 @@ For a guided walkthrough, see the docs page:
 | --- | --- | --- |
 | VS Code Desktop | Supported | Full extension functionality. |
 | VS Code Remote / Codespaces | Supported | Full functionality via remote extension host. |
-| VS Code Web Host (vscode.dev without remote) | Partial | Web-host runtime scaffold is available; full SkyCMS Explorer functionality is in progress. |
+| VS Code Web Host (vscode.dev without remote) | Partial | Site management, sign-in, and tree browsing are enabled; field/file editing and publish/mutate commands are still in progress. |
 
 ---
 

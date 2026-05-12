@@ -1,3 +1,4 @@
+import path from 'path';
 import { build, context } from 'esbuild';
 
 const args = process.argv.slice(2);
@@ -29,6 +30,23 @@ const webOptions = {
   sourcemap: !isProduction,
   minify: isProduction,
   target: 'es2020',
+  plugins: [
+    {
+      name: 'skycms-web-http-alias',
+      setup(buildApi) {
+        buildApi.onResolve({ filter: /^\.\/http$/ }, (args) => {
+          const normalizedImporter = args.importer.replace(/\\/g, '/');
+          if (!normalizedImporter.includes('/src/apiClient/')) {
+            return null;
+          }
+
+          return {
+            path: path.join(path.dirname(args.importer), 'http.browser.ts'),
+          };
+        });
+      },
+    },
+  ],
 };
 
 const buildTargets = isWebOnly ? [webOptions] : [nodeOptions, webOptions];
