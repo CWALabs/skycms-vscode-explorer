@@ -33,6 +33,14 @@ describe('webHostCommandDriver input helpers', () => {
     expect(validateInputValue('title', '   ')).toBe('This field is required and cannot be empty.');
   });
 
+  test('validateInputValue validates banner image URLs', () => {
+    expect(validateInputValue('bannerImage', 'https://example.com/banner.jpg')).toBeUndefined();
+    expect(validateInputValue('bannerimage', 'https://example.com/banner.jpg')).toBeUndefined();
+
+    const result = validateInputValue('bannerImage', 'ftp://example.com/banner.jpg');
+    expect(result).toBe('Use an http or https URL, or leave the field empty.');
+  });
+
   test('validateInputValue accepts empty published value', () => {
     expect(validateInputValue('published', '   ')).toBeUndefined();
   });

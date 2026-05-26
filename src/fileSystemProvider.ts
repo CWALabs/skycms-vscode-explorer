@@ -14,6 +14,23 @@ interface FileEntry {
 }
 
 /**
+ * Folders that SkyCMS requires to exist. They cannot be deleted or renamed.
+ */
+export const SKYCMS_PROTECTED_PATHS = new Set([
+  '/pub',
+  '/pub/article',
+  '/pub/lib',
+  '/pub/lib/ckeditor',
+]);
+
+/**
+ * Files that SkyCMS requires. They cannot be deleted, renamed, or overwritten.
+ */
+export const SKYCMS_READ_ONLY_FILES = new Set([
+  '/pub/lib/ckeditor/ckeditor5-content.css',
+]);
+
+/**
  * VSCode FileSystemProvider for SkyCMS BLOB storage.
  * Provides a virtual filesystem mounted as `skycms-blob://` scheme.
  */
@@ -118,6 +135,10 @@ export class SkyCmsFileSystemProvider implements vscode.FileSystemProvider {
   ): Promise<void> {
     const path = this.uriToPath(uri);
 
+    if (SKYCMS_READ_ONLY_FILES.has(path)) {
+      throw vscode.FileSystemError.NoPermissions(`"${path}" is a SkyCMS system file and cannot be edited.`);
+    }
+
     try {
       const stat = await this.queryClient.getFileStat(path);
       await this.commandClient.uploadFile(path, content, stat.mimeType);
@@ -154,6 +175,10 @@ export class SkyCmsFileSystemProvider implements vscode.FileSystemProvider {
   async delete(uri: vscode.Uri, options: {recursive: boolean}): Promise<void> {
     const path = this.uriToPath(uri);
 
+    if (SKYCMS_PROTECTED_PATHS.has(path) || SKYCMS_READ_ONLY_FILES.has(path)) {
+      throw vscode.FileSystemError.NoPermissions(`"${path}" is required by SkyCMS and cannot be deleted.`);
+    }
+
     try {
       // stat first to determine if it's a file or directory
       const stat = await this.queryClient.getFileStat(path);
@@ -182,6 +207,10 @@ export class SkyCmsFileSystemProvider implements vscode.FileSystemProvider {
   async rename(oldUri: vscode.Uri, newUri: vscode.Uri, options: {overwrite: boolean}): Promise<void> {
     const sourcePath = this.uriToPath(oldUri);
     const destPath = this.uriToPath(newUri);
+
+    if (SKYCMS_PROTECTED_PATHS.has(sourcePath) || SKYCMS_READ_ONLY_FILES.has(sourcePath)) {
+      throw vscode.FileSystemError.NoPermissions(`"${sourcePath}" is required by SkyCMS and cannot be renamed.`);
+    }
 
     try {
       const stat = await this.queryClient.getFileStat(sourcePath);

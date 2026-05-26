@@ -43,8 +43,9 @@ The developer signs in once. The extension stores a bearer token and attaches it
 
 Handles sign-in, token storage, and sign-out.
 
-- Presents a username/password prompt via the VS Code input API (no browser redirect needed for this MVP)
-- Stores the bearer token in VS Code's [SecretStorage](https://code.visualstudio.com/api/references/vscode-api#SecretStorage) — the secure credential store that VS Code provides to extensions
+- Starts a browser-based sign-in flow via SkyCMS auth bootstrap endpoint
+- Polls for sign-in completion and exchanges a one-time code for a bearer token
+- Stores the bearer token in VS Code's [SecretStorage](https://code.visualstudio.com/api/references/vscode-api#SecretStorage) - the secure credential store that VS Code provides to extensions
 - Exposes a `getToken()` method that the API Client calls before every request
 - Clears the token and refreshes the tree on sign-out or on 401
 
@@ -52,9 +53,9 @@ Handles sign-in, token storage, and sign-out.
 
 The single point of contact between the extension and the SkyCMS server.
 
-- Takes a base URL (the SkyCMS Editor host, configured in VS Code settings)
+- Takes a base URL from the active site profile (managed by Site Manager)
 - Attaches `Authorization: Bearer <token>` to every request
-- Handles HTTP errors consistently: 401 → re-authenticate, 403 → show access denied, 5xx → show error notification
+- Handles HTTP errors consistently: 401 -> re-authenticate, 403 -> show access denied, 5xx -> show error notification
 - Returns typed response objects that the Tree Provider and Document Provider consume
 - Does not contain any tree logic or document logic
 
@@ -62,11 +63,12 @@ The single point of contact between the extension and the SkyCMS server.
 
 Implements VS Code's `TreeDataProvider<SkyCmsNode>` interface.
 
-- Calls the API Client to load the list of Layouts, Templates, and Articles
+- Calls the API Client to load layouts, templates, articles/blog streams, and files
 - Maps each entity to a `SkyCmsNode` (a `vscode.TreeItem` subclass)
-- Handles node expansion lazily: children are loaded only when the user expands a node
+- Handles node expansion lazily: versions and folder children are loaded only when expanded
 - Fires `onDidChangeTreeData` to refresh the tree when data changes
 - Attaches a `command` to each leaf node so that clicking it opens the correct virtual document
+- Applies optional content filtering for layouts, templates, articles, or files
 
 ### Virtual Document Provider (`SkyCmsDocumentProvider`)
 
@@ -74,7 +76,7 @@ Implements VS Code's `TextDocumentContentProvider` interface.
 
 - Registered for the `skycms://` URI scheme
 - Receives a `skycms://` URI and calls the API Client to fetch the payload for that entity field
-- Returns the content as a string (HTML, Razor, Markdown, JSON — depending on the URI)
+- Returns the content as a string (HTML, Razor, Markdown, JSON - depending on the URI)
 - On save, calls the API Client to write the updated content back to SkyCMS
 
 ---
@@ -91,7 +93,7 @@ sequenceDiagram
     participant API as API Client
     participant Server as SkyCMS API
 
-    Dev->>Tree: Clicks "Default Layout v3 – Head"
+    Dev->>Tree: Clicks "Default Layout v3 - Head"
     Tree->>DocProvider: vscode.commands.executeCommand('vscode.open', skycms://layouts/1/3/head)
     DocProvider->>API: getLayoutPayload(1, 3, 'head')
     API->>Server: GET /api/vscode/layouts/1/3/head
@@ -128,6 +130,13 @@ sequenceDiagram
 
 The extension registers in the VS Code Explorer panel (the same sidebar where the native file tree lives). It appears as a separate collapsible section labeled **SkyCMS**.
 
+The current manifest includes command families for:
+
+- Site and auth flows
+- Discovery flows (search, filter, recent/pinned)
+- Preview and lifecycle operations (publish/unpublish/restore/diff/duplicate)
+- File workflows (open, upload, new file/folder, move/rename, clipboard, download, path copy)
+
 ```json
 "contributes": {
   "views": {
@@ -136,9 +145,14 @@ The extension registers in the VS Code Explorer panel (the same sidebar where th
     ]
   },
   "commands": [
-    { "command": "skycms.signIn",   "title": "SkyCMS: Sign In" },
-    { "command": "skycms.signOut",  "title": "SkyCMS: Sign Out" },
-    { "command": "skycms.refresh",  "title": "SkyCMS: Refresh" }
+    { "command": "skycms.signIn", "title": "Sign In" },
+    { "command": "skycms.searchContent", "title": "Search Content" },
+    { "command": "skycms.previewCurrent", "title": "Preview Current Context" },
+    { "command": "skycms.restoreArticle", "title": "Restore Deleted Article..." },
+    { "command": "skycms.diffArticleVersion", "title": "Compare with Current Draft" },
+    { "command": "skycms.diffLayoutVersion", "title": "Compare With Editable" },
+    { "command": "skycms.openFileManager", "title": "Open in File Manager" },
+    { "command": "skycms.copyCmsPath", "title": "Copy CMS Path" }
   ],
   "configuration": {
     "title": "SkyCMS Explorer",
@@ -157,7 +171,7 @@ The extension registers in the VS Code Explorer panel (the same sidebar where th
 ## Technology Stack
 
 | Concern | Technology |
-|---|---|
+| --- | --- |
 | Extension language | TypeScript |
 | VS Code API | `vscode` (npm package, types only) |
 | HTTP client | Node `https` module or `node-fetch` (no large dependencies) |
@@ -170,4 +184,3 @@ The server-side API is part of the SkyCMS Editor codebase, not this repository. 
 ---
 
 [← Back to Index](00-Index.md)
-

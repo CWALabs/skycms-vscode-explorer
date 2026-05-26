@@ -151,6 +151,22 @@ describe('SkyCmsCommandClient.unpublishArticle', () => {
   });
 });
 
+describe('SkyCmsCommandClient.restoreArticle', () => {
+  test('sends POST to articles/{n}/restore', async () => {
+    mockRequestJson.mockResolvedValue(undefined);
+    const client = makeClient(TOKEN);
+
+    await client.restoreArticle(9);
+
+    expect(mockRequestJson).toHaveBeenCalledWith(
+      expect.objectContaining({
+        path: '/api/vscode/articles/9/restore',
+        method: 'POST',
+      }),
+    );
+  });
+});
+
 describe('SkyCmsCommandClient.createArticle', () => {
   test('sends POST to /api/vscode/articles with title', async () => {
     mockRequestJson.mockResolvedValue({ articleNumber: 42, title: 'New One' });

@@ -175,6 +175,30 @@ describe('SkyCmsTreeProvider', () => {
     expect(versionFields.map((node) => node.label)).toEqual(['Notes', 'Head', 'Header', 'Footer']);
     expect(versionFields.every((node) => node.isReadOnly)).toBe(true);
     expect(versionFields.every((node) => node.layoutVersionNumber === 2)).toBe(true);
+    expect(versionFields[0].description).toContain('doc');
+    expect(versionFields[0].description).toContain('Read-only');
+    expect(String(versionFields[0].tooltip)).toContain('Field key: notes');
+    expect(String(versionFields[0].tooltip)).toContain('Layout version: 2');
+  });
+
+  test('editable fields expose schema hints in description and tooltip', async () => {
+    const queryClient = {
+      getLayouts: async () => [{ layoutNumber: 1, name: 'Default Site Layout' }],
+      getLayoutVersions: async () => [{ layoutNumber: 1, version: 1, name: 'Default Site Layout', isPublished: true }],
+      getTemplates: async () => [{ templateId: 'abc-123', name: 'Home Page' }],
+      getArticles: async () => [],
+      getBlogPosts: async () => [],
+    };
+
+    const provider = new SkyCmsTreeProvider(queryClient as any, async () => 'token', mockSiteManager);
+    const rootNodes = await provider.getChildren();
+    const roots = await provider.getChildren(rootNodes[0]);
+    const layoutNode = (await provider.getChildren(roots[0]))[0];
+    const layoutFields = await provider.getChildren(layoutNode);
+
+    expect(layoutFields[0].description).toBe('input');
+    expect(String(layoutFields[0].tooltip)).toContain('Field key: layoutName');
+    expect(String(layoutFields[1].tooltip)).toContain('Field mode: doc');
   });
 });
 
@@ -382,5 +406,65 @@ describe('SkyCmsTreeProvider additional branches', () => {
     expect(fileNodes[1].label).toBe('logo.png');
     expect(fileNodes[1].path).toBe('/pub/assets/logo.png');
     expect((fileNodes[1] as any).iconPath).toEqual({ id: 'file' });
+  });
+
+  test('applies layout-only filter state to layouts category', async () => {
+    const queryClient = {
+      getLayouts: async () => [
+        { layoutNumber: 1, version: 1, name: 'Marketing Layout', isPublished: true },
+        { layoutNumber: 2, version: 1, name: 'Docs Layout', isPublished: false },
+      ],
+      getTemplates: async () => [],
+      getArticles: async () => [],
+      getBlogPosts: async () => [],
+    };
+
+    const provider = new SkyCmsTreeProvider(queryClient as any, async () => 'token', mockSiteManager);
+    provider.setContentFilter('marketing', 'layouts');
+
+    const rootNodes = await provider.getChildren();
+    const categories = await provider.getChildren(rootNodes[0]);
+    const layoutCategory = categories.find((node) => node.kind === 'category' && node.category === 'layouts');
+    const layoutNodes = await provider.getChildren(layoutCategory);
+
+    expect(layoutNodes).toHaveLength(1);
+    expect(layoutNodes[0].label).toContain('Marketing Layout');
+  });
+
+  test('keeps matching descendant folders visible when files filter is active', async () => {
+    const queryClient = {
+      getLayouts: async () => [],
+      getTemplates: async () => [],
+      getArticles: async () => [],
+      getBlogPosts: async () => [],
+      getFilesList: async (path: string) => {
+        if (path === '/') {
+          return [
+            { name: 'docs', path: '/pub/docs', isDir: true, mimeType: 'directory', size: 0 },
+            { name: 'logo.png', path: '/pub/logo.png', isDir: false, mimeType: 'image/png', size: 32 },
+          ];
+        }
+
+        if (path === '/pub/docs') {
+          return [
+            { name: 'guide.md', path: '/pub/docs/guide.md', isDir: false, mimeType: 'text/markdown', size: 80 },
+          ];
+        }
+
+        return [];
+      },
+    };
+
+    const provider = new SkyCmsTreeProvider(queryClient as any, async () => 'token', mockSiteManager);
+    provider.setContentFilter('guide', 'files');
+
+    const rootNodes = await provider.getChildren();
+    const categories = await provider.getChildren(rootNodes[0]);
+    const filesCategory = categories.find((node) => node.kind === 'files-category');
+    const rootFiles = await provider.getChildren(filesCategory);
+
+    expect(rootFiles).toHaveLength(1);
+    expect(rootFiles[0].kind).toBe('folder');
+    expect(rootFiles[0].label).toBe('docs');
   });
 });

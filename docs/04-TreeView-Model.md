@@ -14,7 +14,13 @@ The tree appears in the VS Code Explorer sidebar as a collapsible section labele
 SkyCMS
 ├─ [Sign In]                              ← shown only when not authenticated
 │
-├─ Layouts
+├─ [Site Root]                            ← active site label, for example "My Site (website)"
+│  ├─ Layouts
+│  ├─ Page Templates
+│  ├─ Articles
+│  └─ Files
+│
+├─ Layouts                                ← shown under Site Root
 │  ├─ Default Site Layout                 ← displays LayoutName
 │  │  ├─ Layout Name     [input · text]
 │  │  ├─ Notes           [doc · html]
@@ -24,7 +30,7 @@ SkyCMS
 │  └─ Article Layout
 │     └─ (same children)
 │
-├─ Page Templates
+├─ Page Templates                         ← shown under Site Root
 │  ├─ Home Page                           ← displays Title
 │  │  ├─ Title           [input · text]
 │  │  ├─ Content         [doc · html]
@@ -32,7 +38,7 @@ SkyCMS
 │  └─ Article Page
 │     └─ (same children)
 │
-└─ Articles
+├─ Articles                               ← shown under Site Root
    ├─ Drafts
    │  └─ Welcome                          ← displays Title
    │     ├─ Published    [input · datetime]
@@ -45,6 +51,9 @@ SkyCMS
    │     └─ Footer JS    [doc · html]
    └─ Published
       └─ (same children per article)
+
+   └─ Files                                  ← shown under Site Root
+      └─ /pub and descendants
 ```
 
 **Legend:**
@@ -71,6 +80,8 @@ The SkyCMS server handles version resolution. The client passes a logical identi
 ### Root Nodes (Category Headers)
 
 `Layouts`, `Page Templates`, and `Articles` are the three top-level categories. They are always visible once the user is signed in. They have no associated document — clicking them only expands or collapses the section.
+
+`Files` is also a top-level category and exposes SkyCMS blob storage rooted at `/pub`.
 
 These map to `vscode.TreeItemCollapsibleState.Collapsed` (or `Expanded` if the user has previously opened them, which VS Code remembers).
 
@@ -199,6 +210,58 @@ The actual content fetch (GET) for each field happens on click — not on expand
 A **Refresh** command (available in the tree view toolbar) fires `onDidChangeTreeData` with `undefined`, which causes VS Code to re-request all visible nodes. The API Client fetches fresh data for each.
 
 Individual nodes can also be refreshed by right-clicking and selecting **Refresh** (Phase 2 feature).
+
+---
+
+## Content Discovery Commands
+
+SkyCMS Explorer includes command-driven discovery flows so developers can find content without opening many tree branches.
+
+### Search Content
+
+- Command: **SkyCMS: Search Content**
+- Behavior:
+   - Choose a scope: all content, layouts, templates, articles, or files.
+   - Enter a query.
+   - Pick a result and then choose an action.
+- Common actions:
+   - Open file
+   - Preview content
+   - Open folder in File Manager
+   - Pin / Unpin an item for quick access
+
+### Filter Explorer
+
+- Command: **SkyCMS: Filter Explorer**
+- Behavior:
+   - Choose a scope.
+   - Enter a filter query.
+   - Tree nodes are reduced to matching content.
+- Clear command: **SkyCMS: Clear Explorer Filter**
+
+### Recent and Pinned
+
+- Command: **SkyCMS: Recent and Pinned**
+- Behavior:
+   - Opens a quick-pick list that merges pinned items and recent items.
+   - Pinned items appear first.
+   - Selecting an item opens it using the default action for that node type.
+
+### Pin / Unpin from Context Menu
+
+- Command: **SkyCMS: Pin / Unpin**
+- Availability:
+   - Files and folders
+   - Layouts and layout versions
+   - Templates
+   - Articles and blog streams
+
+### Lifecycle Commands
+
+- Publish and unpublish actions are exposed from the article and layout version context menus.
+- Duplicate and compare/diff actions are exposed for layout versions and article versions where version history is available.
+- Restore deleted articles is available from the root menu and command palette, not as a tree node action.
+- The tree model stays focused on browse/edit behavior; lifecycle actions are documented here only at a high level.
 
 ---
 

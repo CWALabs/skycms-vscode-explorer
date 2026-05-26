@@ -204,5 +204,84 @@ export function validateDocumentContent(fieldKey: string, content: string): stri
       return `JavaScript syntax error: ${(e as SyntaxError).message}`;
     }
   }
+
+  if (isHtmlField(fieldKey)) {
+    const trimmed = content.trim();
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+
+    const htmlError = validateHtmlContent(trimmed);
+    if (htmlError) {
+      return htmlError;
+    }
+  }
+
+  return undefined;
+}
+
+function isHtmlField(fieldKey: string): boolean {
+  const normalizedFieldKey = fieldKey.toLowerCase();
+  return normalizedFieldKey === 'content' || normalizedFieldKey === 'head' || normalizedFieldKey === 'header' || normalizedFieldKey === 'footer';
+}
+
+function validateHtmlContent(content: string): string | undefined {
+  const tagPattern = /<!--[^]*?-->|<\/?[a-zA-Z][^>]*>|<!DOCTYPE[^>]*>/g;
+  const voidTags = new Set([
+    'area',
+    'base',
+    'br',
+    'col',
+    'embed',
+    'hr',
+    'img',
+    'input',
+    'link',
+    'meta',
+    'param',
+    'source',
+    'track',
+    'wbr',
+  ]);
+  const openTags: string[] = [];
+
+  for (const match of content.matchAll(tagPattern)) {
+    const token = match[0];
+
+    if (token.startsWith('<!--') || token.toUpperCase().startsWith('<!DOCTYPE')) {
+      continue;
+    }
+
+    const isClosingTag = token.startsWith('</');
+    const tagNameMatch = token.match(/^<\/?\s*([a-zA-Z0-9:-]+)/);
+    if (!tagNameMatch) {
+      return 'HTML syntax error: unable to parse a tag.';
+    }
+
+    const tagName = tagNameMatch[1].toLowerCase();
+    const selfClosing = /\/>\s*$/.test(token) || voidTags.has(tagName);
+
+    if (isClosingTag) {
+      const expectedTag = openTags.pop();
+      if (!expectedTag) {
+        return `HTML syntax error: unexpected closing tag </${tagName}>.`;
+      }
+
+      if (expectedTag !== tagName) {
+        return `HTML syntax error: expected </${expectedTag}> but found </${tagName}>.`;
+      }
+
+      continue;
+    }
+
+    if (!selfClosing) {
+      openTags.push(tagName);
+    }
+  }
+
+  if (openTags.length > 0) {
+    return `HTML syntax error: missing closing tag for <${openTags[openTags.length - 1]}>.`;
+  }
+
   return undefined;
 }

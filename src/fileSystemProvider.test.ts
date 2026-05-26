@@ -283,3 +283,114 @@ describe('SkyCmsFileSystemProvider.rename', () => {
     expect(qc.getFilesList).toHaveBeenCalledTimes(4);
   });
 });
+
+// ---------------------------------------------------------------------------
+// Protected paths — delete
+// ---------------------------------------------------------------------------
+describe('SkyCmsFileSystemProvider.delete — protected paths', () => {
+  test.each([
+    ['/pub'],
+    ['/pub/article'],
+    ['/pub/lib'],
+    ['/pub/lib/ckeditor'],
+    ['/pub/lib/ckeditor/ckeditor5-content.css'],
+  ])(
+    'throws NoPermissions when deleting %s',
+    async (protectedPath) => {
+      const cc = makeCommandClient();
+      const qc = makeQueryClient();
+      const provider = new SkyCmsFileSystemProvider(qc, cc);
+
+      await expect(provider.delete(makeUri(protectedPath), {recursive: true}))
+        .rejects.toMatchObject({code: 'NoPermissions'});
+
+      expect(cc.deleteFile).not.toHaveBeenCalled();
+      expect(cc.deleteFolder).not.toHaveBeenCalled();
+    },
+  );
+
+  test('allows deleting non-protected paths', async () => {
+    const cc = makeCommandClient();
+    const qc = makeQueryClient({
+      getFileStat: jest.fn(async () => ({isDir: false, size: 100, mtime: 0})),
+    });
+    const provider = new SkyCmsFileSystemProvider(qc, cc);
+
+    await provider.delete(makeUri('/pub/images/logo.png'), {recursive: false});
+
+    expect(cc.deleteFile).toHaveBeenCalledWith('/pub/images/logo.png');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Protected paths — rename
+// ---------------------------------------------------------------------------
+describe('SkyCmsFileSystemProvider.rename — protected paths', () => {
+  test.each([
+    ['/pub'],
+    ['/pub/article'],
+    ['/pub/lib'],
+    ['/pub/lib/ckeditor'],
+    ['/pub/lib/ckeditor/ckeditor5-content.css'],
+  ])(
+    'throws NoPermissions when renaming %s',
+    async (protectedPath) => {
+      const cc = makeCommandClient();
+      const qc = makeQueryClient();
+      const provider = new SkyCmsFileSystemProvider(qc, cc);
+
+      await expect(
+        provider.rename(makeUri(protectedPath), makeUri(`${protectedPath}-renamed`), {overwrite: false}),
+      ).rejects.toMatchObject({code: 'NoPermissions'});
+
+      expect(cc.moveFile).not.toHaveBeenCalled();
+      expect(cc.moveFolder).not.toHaveBeenCalled();
+    },
+  );
+
+  test('allows renaming non-protected paths', async () => {
+    const cc = makeCommandClient();
+    const qc = makeQueryClient({
+      getFileStat: jest.fn(async () => ({isDir: false, size: 100, mtime: 0})),
+    });
+    const provider = new SkyCmsFileSystemProvider(qc, cc);
+
+    await provider.rename(makeUri('/pub/old.txt'), makeUri('/pub/new.txt'), {overwrite: false});
+
+    expect(cc.moveFile).toHaveBeenCalledWith('/pub/old.txt', '/pub/new.txt');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Read-only files — writeFile
+// ---------------------------------------------------------------------------
+describe('SkyCmsFileSystemProvider.writeFile — read-only system files', () => {
+  test.each([
+    ['/pub/lib/ckeditor/ckeditor5-content.css'],
+  ])(
+    'throws NoPermissions when writing to %s',
+    async (readOnlyPath) => {
+      const cc = makeCommandClient();
+      const qc = makeQueryClient();
+      const provider = new SkyCmsFileSystemProvider(qc, cc);
+
+      await expect(
+        provider.writeFile(makeUri(readOnlyPath), new Uint8Array([1, 2, 3]), {create: false, overwrite: true}),
+      ).rejects.toMatchObject({code: 'NoPermissions'});
+
+      expect(cc.uploadFile).not.toHaveBeenCalled();
+    },
+  );
+
+  test('allows writing to non-protected files', async () => {
+    const cc = makeCommandClient();
+    const qc = makeQueryClient({
+      getFileStat: jest.fn(async () => ({isDir: false, size: 0, mtime: 0, mimeType: 'text/plain'})),
+    });
+    const provider = new SkyCmsFileSystemProvider(qc, cc);
+
+    await provider.writeFile(makeUri('/pub/images/custom.css'), new Uint8Array([1]), {create: false, overwrite: true});
+
+    expect(cc.uploadFile).toHaveBeenCalledWith('/pub/images/custom.css', expect.any(Uint8Array), 'text/plain');
+  });
+});

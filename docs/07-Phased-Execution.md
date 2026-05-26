@@ -4,6 +4,8 @@
 
 This document breaks the project into four phases. Each phase produces working, useful software on its own. You can stop after any phase and still have something that improves SkyCMS developer productivity.
 
+> Status note (May 2026): This page is a historical roadmap. Current shipped behavior now includes content search, explorer filtering, recent/pinned quick access, preview-current, validation and safety feedback, and lifecycle work such as restore, duplicate, and version comparison flows. For live implementation status, use [12-Gap-Closure-Plan](12-Gap-Closure-Plan.md).
+
 ---
 
 ## Phase 1 — Read-Only Explorer with Authentication
