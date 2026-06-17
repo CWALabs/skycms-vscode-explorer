@@ -101,6 +101,37 @@ describe('findSkyCmsContentSearchResults', () => {
     expect(results[0].node.path).toBe('/pub/docs/guide.md');
   });
 
+  test('matches files by friendly displayPath terms', async () => {
+    const queryClient = makeQueryClient({
+      getFilesList: jest.fn(async (path: string) => {
+        if (path === '/') {
+          return [
+            {
+              name: 'My Article Title',
+              path: '/pub/articles/42',
+              displayPath: '/pub/articles/My Article Title',
+              isDir: true,
+              mimeType: 'directory',
+              size: 0,
+            },
+          ];
+        }
+
+        return [];
+      }),
+    });
+
+    const results = await findSkyCmsContentSearchResults(queryClient as any, {
+      query: 'my article title',
+      scope: 'files',
+      limit: 10,
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].kind).toBe('folder');
+    expect(results[0].node.path).toBe('/pub/articles/42');
+  });
+
   test('returns no results for blank queries', async () => {
     const queryClient = makeQueryClient();
 

@@ -382,7 +382,14 @@ describe('SkyCmsTreeProvider additional branches', () => {
       getArticles: async () => [],
       getBlogPosts: async () => [],
       getFilesList: async () => [
-        { name: 'My Article Title', path: '/pub/articles/42', isDir: true, mimeType: 'directory', size: 0 },
+        {
+          name: 'My Article Title',
+          path: '/pub/articles/42',
+          displayPath: '/pub/articles/My Article Title',
+          isDir: true,
+          mimeType: 'directory',
+          size: 0,
+        },
         { name: 'logo.png', path: '/pub/assets/logo.png', isDir: false, mimeType: 'image/png', size: 1234 },
       ],
     };
@@ -400,11 +407,17 @@ describe('SkyCmsTreeProvider additional branches', () => {
     expect(fileNodes[0].kind).toBe('folder');
     expect(fileNodes[0].label).toBe('My Article Title');
     expect(fileNodes[0].path).toBe('/pub/articles/42');
+    expect(fileNodes[0].description).toBe('/pub/articles/My Article Title');
+    expect(String(fileNodes[0].tooltip)).toContain('Friendly path: /pub/articles/My Article Title');
+    expect(String(fileNodes[0].tooltip)).toContain('Storage path: /pub/articles/42');
+    expect(String(fileNodes[0].tooltip)).toContain('Article number: 42');
     expect((fileNodes[0] as any).iconPath).toEqual({ id: 'folder' });
 
     expect(fileNodes[1].kind).toBe('file');
     expect(fileNodes[1].label).toBe('logo.png');
     expect(fileNodes[1].path).toBe('/pub/assets/logo.png');
+    expect(fileNodes[1].description).toBe('/pub/assets/logo.png');
+    expect(String(fileNodes[1].tooltip)).toContain('Path: /pub/assets/logo.png');
     expect((fileNodes[1] as any).iconPath).toEqual({ id: 'file' });
   });
 

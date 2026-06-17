@@ -88,5 +88,8 @@ Validated against:
 - The extension opens FileManager UI pages directly for human navigation, but API writes and reads are routed through /api/vscode endpoints.
 - Route path parameters in client methods are URL encoded where needed (`entityId`, `fieldKey`, and `versionId`).
 - File and folder route parameters use URL-safe Base64 hashes generated from full CMS paths.
+- `SkyCmsQueryClient.getFilesList` consumes both canonical and friendly path fields when present:
+	- `path`: canonical storage path (operation-safe, used for all reads/writes/moves/deletes)
+	- `displayPath`: friendly path (UI/search text, may replace article number segments with article titles)
 
 [← Back to Index](00-Index.md)

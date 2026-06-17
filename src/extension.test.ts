@@ -190,6 +190,7 @@ jest.mock('./fileSystemProvider', () => ({
     '/pub',
     '/pub/article',
     '/pub/lib',
+    '/pub/lib/ckeditor',
     '/',
   ]),
   SKYCMS_READ_ONLY_FILES: new Set([

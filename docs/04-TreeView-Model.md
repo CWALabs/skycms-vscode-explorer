@@ -107,6 +107,20 @@ The two modes share the same underlying GET/PUT API contract. They differ only i
 
 ---
 
+### Files Path Presentation
+
+File and folder nodes can carry two path representations:
+
+| Field | Meaning | Used for |
+|---|---|---|
+| `path` | Canonical storage path (for example `/pub/articles/42`) | All operations (open, save, rename, move, delete, upload target) |
+| `displayPath` | Friendly path (for example `/pub/articles/My Article Title`) | Tree `description`, tooltips, and file-search matching text |
+
+When both are present, the explorer shows the friendly path in UI text and includes the canonical path in tooltip metadata.
+For article paths, tooltips also surface the numeric article number when it can be derived from canonical storage path.
+
+---
+
 ### Layout Node
 
 A **Layout** represents a single layout record in SkyCMS. Its display name comes from the `LayoutName` field. The SkyCMS server tracks versions internally; the extension always works with the current editable version by passing `LayoutNumber`.

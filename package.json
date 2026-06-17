@@ -2,7 +2,7 @@
   "name": "skycms-explorer",
   "displayName": "SkyCMS Explorer",
   "description": "Developer-first VS Code Explorer for SkyCMS websites. Manage your sites, articles, layouts, and files directly from VS Code. Visit https://sky-cms.com to learn more.",
-  "version": "0.9.39",
+  "version": "0.9.40",
   "publisher": "cwalabs",
   "homepage": "https://sky-cms.com",
   "author": {
@@ -294,7 +294,7 @@
       },
       {
         "command": "skycms.showRootMenu",
-        "title": "More Actions\u2026",
+        "title": "More Actions…",
         "icon": "$(ellipsis)"
       },
       {

@@ -400,9 +400,10 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
       const visibleEntries = await this.filterFileEntries(entries, '/');
       return visibleEntries.map((entry) => {
         const fullPath = entry.path ?? `/${entry.name}`;
+        const displayPath = entry.displayPath;
         return isDirectoryEntry(entry)
-          ? SkyCmsNode.folderFromPath(fullPath, entry.name)
-          : SkyCmsNode.fileFromPath(fullPath, entry.name);
+          ? SkyCmsNode.folderFromPath(fullPath, entry.name, displayPath)
+          : SkyCmsNode.fileFromPath(fullPath, entry.name, displayPath);
       });
     } catch (error) {
       logError('Failed to load files.', error);
@@ -416,9 +417,10 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
       const visibleEntries = await this.filterFileEntries(entries, parentPath);
       return visibleEntries.map((entry) => {
         const childPath = entry.path ?? (parentPath.endsWith('/') ? `${parentPath}${entry.name}` : `${parentPath}/${entry.name}`);
+        const displayPath = entry.displayPath;
         return isDirectoryEntry(entry)
-          ? SkyCmsNode.folderFromPath(childPath, entry.name)
-          : SkyCmsNode.fileFromPath(childPath, entry.name);
+          ? SkyCmsNode.folderFromPath(childPath, entry.name, displayPath)
+          : SkyCmsNode.fileFromPath(childPath, entry.name, displayPath);
       });
     } catch (error) {
       logError(`Failed to load folder contents: path=${parentPath}`, error);
@@ -453,7 +455,7 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
 
     for (const entry of entries) {
       const path = entry.path ?? (parentPath === '/' ? `/${entry.name}` : `${parentPath}/${entry.name}`);
-      if (this.matchesFilter(entry.name, path)) {
+      if (this.matchesFilter(entry.name, entry.displayPath, path)) {
         filtered.push(entry);
         continue;
       }
@@ -476,7 +478,7 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
       const entries = await this.queryClient.getFilesList(path);
       for (const entry of entries) {
         const childPath = entry.path ?? (path === '/' ? `/${entry.name}` : `${path}/${entry.name}`);
-        if (this.matchesFilter(entry.name, childPath)) {
+        if (this.matchesFilter(entry.name, entry.displayPath, childPath)) {
           matches = true;
           break;
         }
@@ -657,12 +659,15 @@ export class SkyCmsNode extends vscode.TreeItem {
     return this.folderFromPath(path, name);
   }
 
-  public static folderFromPath(path: string, name: string): SkyCmsNode {
+  public static folderFromPath(path: string, name: string, displayPath?: string): SkyCmsNode {
     const node = new SkyCmsNode(name, 'folder', vscode.TreeItemCollapsibleState.Collapsed);
     node.path = path;
     node.isDir = true;
     node.iconPath = new vscode.ThemeIcon('folder');
     node.contextValue = 'folderNode';
+    const pathMetadata = buildPathMetadata(path, displayPath);
+    node.description = pathMetadata.description;
+    node.tooltip = pathMetadata.tooltip;
     return node;
   }
 
@@ -671,12 +676,15 @@ export class SkyCmsNode extends vscode.TreeItem {
     return this.fileFromPath(path, name);
   }
 
-  public static fileFromPath(path: string, name: string): SkyCmsNode {
+  public static fileFromPath(path: string, name: string, displayPath?: string): SkyCmsNode {
     const node = new SkyCmsNode(name, 'file', vscode.TreeItemCollapsibleState.None);
     node.path = path;
     node.isDir = false;
     node.iconPath = new vscode.ThemeIcon('file');
     node.contextValue = 'fileNode';
+    const pathMetadata = buildPathMetadata(path, displayPath);
+    node.description = pathMetadata.description;
+    node.tooltip = pathMetadata.tooltip;
     node.command = {
       command: 'skycms.openFile',
       title: 'Open SkyCMS file',
@@ -946,5 +954,37 @@ function isDirectoryEntry(entry: FileListEntry): boolean {
   }
 
   return entry.isDir;
+}
+
+function buildPathMetadata(path: string, displayPath?: string): { description: string; tooltip: string } {
+  const canonicalPath = path;
+  const friendlyPath = displayPath && displayPath.trim().length > 0 ? displayPath : canonicalPath;
+  const articleNumber = extractArticleNumber(canonicalPath);
+
+  const articleHint = articleNumber !== undefined
+    ? `\n\nArticle number: ${articleNumber}`
+    : '';
+
+  if (friendlyPath === canonicalPath) {
+    return {
+      description: friendlyPath,
+      tooltip: `Path: ${canonicalPath}${articleHint}`,
+    };
+  }
+
+  return {
+    description: friendlyPath,
+    tooltip: `Friendly path: ${friendlyPath}\n\nStorage path: ${canonicalPath}${articleHint}`,
+  };
+}
+
+function extractArticleNumber(path: string): number | undefined {
+  const match = path.match(/^\/pub\/articles\/(\d+)(?:\/|$)/i);
+  if (!match) {
+    return undefined;
+  }
+
+  const articleNumber = Number(match[1]);
+  return Number.isFinite(articleNumber) ? articleNumber : undefined;
 }
 

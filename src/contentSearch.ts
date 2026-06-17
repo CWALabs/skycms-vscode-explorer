@@ -131,12 +131,13 @@ async function collectFileCandidates(
 
   for (const entry of entries) {
     const path = entry.path ?? buildFilePath(parentPath, entry.name);
+    const displayPath = entry.displayPath;
     const node = isDirectoryEntry(entry)
-      ? SkyCmsNode.folderFromPath(path, entry.name)
-      : SkyCmsNode.fileFromPath(path, entry.name);
+      ? SkyCmsNode.folderFromPath(path, entry.name, displayPath)
+      : SkyCmsNode.fileFromPath(path, entry.name, displayPath);
 
     candidates.push(
-      buildCandidate(node.kind as SearchCandidate['kind'], node, [entry.name, path]),
+      buildCandidate(node.kind as SearchCandidate['kind'], node, [entry.name, displayPath, path]),
     );
 
     if (isDirectoryEntry(entry)) {
