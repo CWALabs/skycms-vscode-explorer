@@ -20,8 +20,11 @@ A VS Code extension that brings your [SkyCMS](https://sky-cms.com) content direc
 - Connect and switch between multiple SkyCMS Editor sites.
 - Sign in through a secure browser verification flow.
 - Browse layouts, page templates, articles, and files in a dedicated SkyCMS tree.
+- Search across layouts, templates, articles, and files from one command.
+- Filter the Explorer tree by scope and query to reduce visual noise.
+- Reopen recent content quickly and pin frequently used items.
 - Edit content fields in either document-tab or inline-input modes.
-- Manage key lifecycle actions such as article publish and unpublish.
+- Manage lifecycle actions including publish, unpublish, restore, duplicate, and version compare flows.
 - Work with `/pub` storage directly from VS Code (open, save, upload, rename, move, delete).
 
 For a guided walkthrough, see the docs page:
@@ -89,6 +92,36 @@ After signing in, the SkyCMS panel shows four top-level categories:
 
 Click any category to expand it. Click any item inside to expand it further.
 
+### Content discovery workflows
+
+When your site has many items, use these commands instead of manual tree expansion:
+
+#### Search Content
+
+- Run **SkyCMS: Search Content**.
+- Pick a scope (`All Content`, `Layouts`, `Page Templates`, `Articles`, or `Files`).
+- Enter a query.
+- Pick a result, then choose an action (for example Open, Preview Draft, Open in File Manager, or Pin / Unpin).
+
+#### Filter Explorer
+
+- Run **SkyCMS: Filter Explorer**.
+- Pick a scope and enter a filter string.
+- The tree narrows to matching nodes.
+- Run **SkyCMS: Clear Explorer Filter** to restore the full tree.
+
+#### Recent and Pinned
+
+- Run **SkyCMS: Recent and Pinned** to open a quick list of previously opened items.
+- Use **Pin / Unpin** from search actions or item context menus to keep important content at the top.
+
+#### Preview Current Context
+
+- Run **SkyCMS: Preview Current Context**.
+- If a previewable node is selected in the tree, that node is used.
+- If a SkyCMS field tab is active, the extension resolves the parent entity and previews it.
+- This is the fastest way to move from editing to page preview without manually finding the parent node.
+
 ---
 
 ## Articles
@@ -116,12 +149,21 @@ Click any field to open it. See [Editing fields](#editing-fields) below for how 
 
 Run **SkyCMS: New Article** from the Command Palette. Enter a title and press **Enter**. The article appears under **Articles**.
 
-### Publishing and unpublishing
+### Publishing, unpublishing, and restore
 
 Right-click an article in the tree to see these options:
 
 - **Publish** — makes the article publicly visible. VS Code asks you to confirm before publishing.
 - **Unpublish** — moves the article back to draft state and removes it from public view. VS Code asks you to confirm.
+
+From the SkyCMS root menu (**More Actions…**) or Command Palette:
+
+- **Restore Deleted Article...** — restores a deleted article by article number and refreshes the tree.
+
+For version-level lifecycle checks:
+
+- **Compare with Current Draft** — compares an article version against the current draft in VS Code diff.
+- **Compare With Editable** — compares a layout version against the current editable version in VS Code diff.
 
 ---
 
@@ -148,6 +190,7 @@ Right-click a layout version to see these options:
 - **Publish Layout Version** — makes this version the live version. VS Code asks you to confirm.
 - **Set as Default Layout** — marks this version as the default layout for new pages. VS Code asks you to confirm.
 - **Duplicate Layout Version** — creates a new version copied from this one. The new version number appears in a confirmation message.
+- **Compare With Editable** — opens a VS Code diff between this version and the current editable layout field.
 
 ---
 
@@ -169,17 +212,17 @@ Expand **Files** to browse your SkyCMS blob storage. The tree starts at `/pub`. 
 
 ### Opening a file
 
-Right-click a file → **Open File**. The file opens as a VS Code editor tab. You can read and edit it normally.
+Right-click a file -> **Open**. The file opens as a VS Code editor tab. You can read and edit it normally.
 
 Saving with **Ctrl+S** (Windows/Linux) or **Cmd+S** (macOS) writes the change directly to SkyCMS storage. There is no separate "upload" step.
 
 ### Uploading a file
 
-Right-click any folder → **Upload File Here**. A file picker opens. Select a file from your computer. The file uploads to that folder and appears in the tree.
+Right-click any folder -> **Upload File...**. A file picker opens. Select a file from your computer. The file uploads to that folder and appears in the tree.
 
 ### Creating a folder
 
-Right-click any folder → **New Folder Here**. Enter a name and press **Enter**. The folder is created immediately.
+Right-click any folder -> **New Folder...**. Enter a name and press **Enter**. The folder is created immediately.
 
 ### Renaming or moving a file or folder
 
@@ -192,11 +235,22 @@ Both operations write through to SkyCMS storage immediately.
 
 ### Deleting a file
 
-Right-click a file → **Delete File**. VS Code asks you to confirm. Deletion cannot be undone.
+Right-click a file -> **Delete**. VS Code asks you to confirm. Deletion cannot be undone.
 
 ### Deleting a folder
 
-Right-click a folder → **Delete Folder**. VS Code asks you to confirm. The folder and all its contents are deleted. This cannot be undone.
+Right-click a folder -> **Delete**. VS Code asks you to confirm. The folder and all its contents are deleted. This cannot be undone.
+
+### More file actions
+
+The Files context menus also include:
+
+- **Open in File Manager** - opens the SkyCMS file manager at the current folder.
+- **Open on Web** - opens a file or folder using the configured site public URL.
+- **Copy Public URL** - copies the full public URL.
+- **Copy CMS Path** - copies the `/pub/...` storage path.
+- **Paste** - uploads a local file/folder from copied OS path, or pastes Cut/Copy actions.
+- **Cut / Copy / Rename... / Download / Open to the Side / New File... / Add to Chat** for workflow speed.
 
 ---
 
@@ -227,11 +281,48 @@ All SkyCMS commands are available from the Command Palette (`Ctrl+Shift+P` / `Cm
 | **SkyCMS: Add Site** | Add a SkyCMS editor URL profile |
 | **SkyCMS: Switch Site** | Switch the active SkyCMS site |
 | **SkyCMS: Remove Site** | Remove a saved SkyCMS site |
-| **SkyCMS: Manage Sites** | Open a menu for add/switch/remove site actions |
+| **SkyCMS: Manage Sites** | Open site management actions |
 | **SkyCMS: Sign In** | Start the browser sign-in flow |
-| **SkyCMS: Sign Out** | Clear your stored credentials and sign out |
-| **SkyCMS: Refresh** | Reload the tree from SkyCMS |
+| **SkyCMS: Sign Out** | Clear stored credentials |
+| **SkyCMS: Refresh** | Reload the explorer tree |
+| **SkyCMS: Open Public Site** | Open the active site's public URL |
+| **SkyCMS: Open Editor** | Open the active site's editor URL |
+| **SkyCMS: Documentation** | Open SkyCMS documentation |
+| **SkyCMS: Ask SkyCMS** | Open the SkyCMS chat assistant |
+| **SkyCMS: Search Content** | Search layouts, templates, articles, and files |
+| **SkyCMS: Filter Explorer** | Apply a tree filter by scope and query |
+| **SkyCMS: Clear Explorer Filter** | Remove the active tree filter |
+| **SkyCMS: Recent and Pinned** | Open quick-access recent/pinned content |
+| **SkyCMS: Pin / Unpin** | Toggle quick-access pin state |
+| **SkyCMS: Preview Draft** | Preview selected layout, template, article, or blog stream |
+| **SkyCMS: Preview Current Context** | Preview from selected node or active SkyCMS field tab |
+| **SkyCMS: Publish** | Publish selected article/blog stream |
+| **SkyCMS: Unpublish** | Unpublish selected article/blog stream |
+| **SkyCMS: Restore Deleted Article...** | Restore an article by article number |
 | **SkyCMS: New Article** | Create a new article |
+| **SkyCMS: New Template** | Create a new page template |
+| **SkyCMS: Open on Public Site** | Open selected article/blog stream on public site |
+| **SkyCMS: Publish Layout Version** | Publish selected layout version |
+| **SkyCMS: Set as Default Layout** | Set selected layout version as default |
+| **SkyCMS: Duplicate Layout Version** | Duplicate selected layout version |
+| **SkyCMS: Compare with Current Draft** | Diff an article version against draft |
+| **SkyCMS: Compare With Editable** | Diff a layout version against editable |
+| **SkyCMS: Open** | Open selected file |
+| **SkyCMS: Open to the Side** | Open selected file in side editor |
+| **SkyCMS: Upload File...** | Upload into selected files folder |
+| **SkyCMS: New Folder...** | Create folder in selected files location |
+| **SkyCMS: New File...** | Create empty file in selected files location |
+| **SkyCMS: Paste** | Paste from OS path or Cut/Copy buffer |
+| **SkyCMS: Rename...** | Rename selected file/folder |
+| **SkyCMS: Cut** | Mark selected file/folder for move |
+| **SkyCMS: Copy** | Mark selected file/folder for duplicate |
+| **SkyCMS: Delete** | Delete selected file/folder |
+| **SkyCMS: Open in File Manager** | Open selected path in SkyCMS File Manager |
+| **SkyCMS: Open on Web** | Open selected file/folder on public site |
+| **SkyCMS: Copy Public URL** | Copy selected path public URL |
+| **SkyCMS: Copy CMS Path** | Copy selected path as CMS storage path |
+| **SkyCMS: Download** | Download selected file locally |
+| **SkyCMS: Add to Chat** | Open chat with selected node context |
 
 ---
 

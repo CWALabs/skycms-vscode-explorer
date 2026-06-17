@@ -9,7 +9,7 @@ If you are reading this for the first time, start at the top and work down. Each
 ## Reading Path
 
 | # | Document | What it covers |
-|---|---|---|
+| --- | --- | --- |
 | 01 | [Project Overview](01-Project-Overview.md) | What this project is, who it is for, and why it exists |
 | 02 | [Design Principles](02-Design-Principles.md) | The decisions that shape every technical choice |
 | 03 | [Architecture](03-Architecture.md) | How the extension, the API, and SkyCMS fit together |
@@ -21,6 +21,9 @@ If you are reading this for the first time, start at the top and work down. Each
 | 09 | [Requirements](09-Requirements.md) | Functional and non-functional requirements with IDs |
 | 10 | [Testing Strategy](10-Testing-Strategy.md) | Test framework, coverage targets, and CI integration |
 | 11 | [Development Setup](11-Development-Setup.md) | How to build, test, and run the extension locally |
+| 12 | [Gap Closure Plan](12-Gap-Closure-Plan.md) | Living backlog and progress tracker for closing product gaps |
+| 13 | [Endpoint Contract Matrix](13-Endpoint-Contract-Matrix.md) | Source-of-truth mapping from extension client methods to server routes |
+| 14 | [PR-Ready Change Summary](14-PR-Ready-Change-Summary.md) | Copy-ready pull request title/body/checklist for lifecycle and docs closure |
 | – | [URI Scheme](URI-Scheme.md) | Full specification of the `skycms://` URI scheme |
 
 ---
@@ -30,6 +33,6 @@ If you are reading this for the first time, start at the top and work down. Each
 - **Extension entry point:** `src/extension.ts`
 - **Tree data provider:** `src/treeProvider.ts`
 - **URI scheme:** `skycms://`
-- **SkyCMS docs:** https://docs.sky-cms.com/
-- **SkyCMS source:** https://github.com/CWALabs/SkyCMS
-- **SkyCMS entity models:** https://github.com/CWALabs/SkyCMS/tree/main/Common/Data
+- **SkyCMS docs:** <https://docs.sky-cms.com/>
+- **SkyCMS source:** <https://github.com/CWALabs/SkyCMS>
+- **SkyCMS entity models:** <https://github.com/CWALabs/SkyCMS/tree/main/Common/Data>

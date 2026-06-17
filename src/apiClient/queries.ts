@@ -32,6 +32,7 @@ export interface BrowserAuthPollResponse {
 export interface FileListEntry {
   name: string;
   path?: string;
+  displayPath?: string;
   isDir: boolean;
   mimeType?: string;
   size: number;

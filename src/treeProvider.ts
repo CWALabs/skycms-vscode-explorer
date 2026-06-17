@@ -17,11 +17,19 @@ import { HttpError } from './apiClient/httpError';
 import { logError, logInfo } from './log';
 import { ErrorHandler } from './errorHandler';
 
+type SkyCmsTreeFilterScope = 'all' | 'layouts' | 'templates' | 'articles' | 'files';
+
+interface SkyCmsTreeFilterState {
+  query: string;
+  scope: SkyCmsTreeFilterScope;
+}
+
 export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
   private readonly queryClient: SkyCmsQueryClient;
   private readonly getToken: () => Promise<string | undefined>;
   private readonly siteManager: SiteManager;
   private authManager: AuthManager | undefined;
+  private contentFilter: SkyCmsTreeFilterState | undefined;
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<SkyCmsNode | undefined>();
 
   public readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
@@ -44,6 +52,29 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
 
   public refreshNode(node: SkyCmsNode): void {
     this.onDidChangeTreeDataEmitter.fire(node);
+  }
+
+  public setContentFilter(query: string, scope: SkyCmsTreeFilterScope): void {
+    const normalized = query.trim().toLowerCase();
+    if (!normalized) {
+      this.clearContentFilter();
+      return;
+    }
+
+    this.contentFilter = {
+      query: normalized,
+      scope,
+    };
+    this.refresh();
+  }
+
+  public clearContentFilter(): void {
+    this.contentFilter = undefined;
+    this.refresh();
+  }
+
+  public getContentFilter(): SkyCmsTreeFilterState | undefined {
+    return this.contentFilter;
   }
 
   public getTreeItem(element: SkyCmsNode): vscode.TreeItem {
@@ -135,19 +166,38 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
     try {
       if (category.category === 'layouts') {
         const layouts = await this.queryClient.getLayouts();
-        return layouts.map((layout) => SkyCmsNode.layout(layout));
+        const filtered = this.isFilterActiveFor('layouts')
+          ? layouts.filter((layout) => this.matchesFilter(layout.name, formatLayoutDescription(layout)))
+          : layouts;
+        return filtered.map((layout) => SkyCmsNode.layout(layout));
       }
 
       if (category.category === 'templates') {
         const templates = await this.queryClient.getTemplates();
-        return templates.map((template) => SkyCmsNode.template(template));
+        const filtered = this.isFilterActiveFor('templates')
+          ? templates.filter((template) =>
+            this.matchesFilter(template.name, template.templateId, template.layoutNumber),
+          )
+          : templates;
+        return filtered.map((template) => SkyCmsNode.template(template));
       }
 
       logInfo('Fetching articles from API');
       const articles = await this.queryClient.getArticles();
       logInfo(`getArticles returned ${articles.length} items`);
       const sorted = [...articles].sort((a, b) => (a.title ?? '').localeCompare(b.title ?? ''));
-      return sorted
+      const filtered = this.isFilterActiveFor('articles')
+        ? sorted.filter((article) =>
+          this.matchesFilter(
+            article.title,
+            article.urlPath,
+            article.blogKey,
+            article.articleType,
+            article.isPublished ? 'published' : 'draft',
+          ),
+        )
+        : sorted;
+      return filtered
         .filter((article) => Number(article.articleType) !== 1)
         .map((article) =>
           Number(article.articleType) === 2
@@ -347,11 +397,13 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
   private async getFilesCategoryChildren(): Promise<SkyCmsNode[]> {
     try {
       const entries = await this.queryClient.getFilesList('/');
-      return entries.map((entry) => {
+      const visibleEntries = await this.filterFileEntries(entries, '/');
+      return visibleEntries.map((entry) => {
         const fullPath = entry.path ?? `/${entry.name}`;
+        const displayPath = entry.displayPath;
         return isDirectoryEntry(entry)
-          ? SkyCmsNode.folderFromPath(fullPath, entry.name)
-          : SkyCmsNode.fileFromPath(fullPath, entry.name);
+          ? SkyCmsNode.folderFromPath(fullPath, entry.name, displayPath)
+          : SkyCmsNode.fileFromPath(fullPath, entry.name, displayPath);
       });
     } catch (error) {
       logError('Failed to load files.', error);
@@ -362,16 +414,86 @@ export class SkyCmsTreeProvider implements vscode.TreeDataProvider<SkyCmsNode> {
   private async getFolderChildren(parentPath: string): Promise<SkyCmsNode[]> {
     try {
       const entries = await this.queryClient.getFilesList(parentPath);
-      return entries.map((entry) => {
+      const visibleEntries = await this.filterFileEntries(entries, parentPath);
+      return visibleEntries.map((entry) => {
         const childPath = entry.path ?? (parentPath.endsWith('/') ? `${parentPath}${entry.name}` : `${parentPath}/${entry.name}`);
+        const displayPath = entry.displayPath;
         return isDirectoryEntry(entry)
-          ? SkyCmsNode.folderFromPath(childPath, entry.name)
-          : SkyCmsNode.fileFromPath(childPath, entry.name);
+          ? SkyCmsNode.folderFromPath(childPath, entry.name, displayPath)
+          : SkyCmsNode.fileFromPath(childPath, entry.name, displayPath);
       });
     } catch (error) {
       logError(`Failed to load folder contents: path=${parentPath}`, error);
       return [this.createLoadErrorNode('folder contents', error)];
     }
+  }
+
+  private isFilterActiveFor(scope: Exclude<SkyCmsTreeFilterScope, 'all'>): boolean {
+    return this.contentFilter?.scope === 'all' || this.contentFilter?.scope === scope;
+  }
+
+  private matchesFilter(...parts: Array<string | number | boolean | null | undefined>): boolean {
+    if (!this.contentFilter?.query) {
+      return true;
+    }
+
+    const haystack = parts
+      .map((part) => (part === null || part === undefined ? '' : String(part).toLowerCase()))
+      .filter((part) => part.length > 0)
+      .join(' ');
+
+    return haystack.includes(this.contentFilter.query);
+  }
+
+  private async filterFileEntries(entries: FileListEntry[], parentPath: string): Promise<FileListEntry[]> {
+    if (!this.isFilterActiveFor('files')) {
+      return entries;
+    }
+
+    const cache = new Map<string, boolean>();
+    const filtered: FileListEntry[] = [];
+
+    for (const entry of entries) {
+      const path = entry.path ?? (parentPath === '/' ? `/${entry.name}` : `${parentPath}/${entry.name}`);
+      if (this.matchesFilter(entry.name, entry.displayPath, path)) {
+        filtered.push(entry);
+        continue;
+      }
+
+      if (isDirectoryEntry(entry) && await this.folderContainsMatch(path, cache)) {
+        filtered.push(entry);
+      }
+    }
+
+    return filtered;
+  }
+
+  private async folderContainsMatch(path: string, cache: Map<string, boolean>): Promise<boolean> {
+    if (cache.has(path)) {
+      return cache.get(path)!;
+    }
+
+    let matches = false;
+    try {
+      const entries = await this.queryClient.getFilesList(path);
+      for (const entry of entries) {
+        const childPath = entry.path ?? (path === '/' ? `/${entry.name}` : `${path}/${entry.name}`);
+        if (this.matchesFilter(entry.name, entry.displayPath, childPath)) {
+          matches = true;
+          break;
+        }
+
+        if (isDirectoryEntry(entry) && await this.folderContainsMatch(childPath, cache)) {
+          matches = true;
+          break;
+        }
+      }
+    } catch {
+      matches = false;
+    }
+
+    cache.set(path, matches);
+    return matches;
   }
 
   private createLoadErrorNode(target: string, error: unknown): SkyCmsNode {
@@ -537,12 +659,15 @@ export class SkyCmsNode extends vscode.TreeItem {
     return this.folderFromPath(path, name);
   }
 
-  public static folderFromPath(path: string, name: string): SkyCmsNode {
+  public static folderFromPath(path: string, name: string, displayPath?: string): SkyCmsNode {
     const node = new SkyCmsNode(name, 'folder', vscode.TreeItemCollapsibleState.Collapsed);
     node.path = path;
     node.isDir = true;
     node.iconPath = new vscode.ThemeIcon('folder');
     node.contextValue = 'folderNode';
+    const pathMetadata = buildPathMetadata(path, displayPath);
+    node.description = pathMetadata.description;
+    node.tooltip = pathMetadata.tooltip;
     return node;
   }
 
@@ -551,12 +676,15 @@ export class SkyCmsNode extends vscode.TreeItem {
     return this.fileFromPath(path, name);
   }
 
-  public static fileFromPath(path: string, name: string): SkyCmsNode {
+  public static fileFromPath(path: string, name: string, displayPath?: string): SkyCmsNode {
     const node = new SkyCmsNode(name, 'file', vscode.TreeItemCollapsibleState.None);
     node.path = path;
     node.isDir = false;
     node.iconPath = new vscode.ThemeIcon('file');
     node.contextValue = 'fileNode';
+    const pathMetadata = buildPathMetadata(path, displayPath);
+    node.description = pathMetadata.description;
+    node.tooltip = pathMetadata.tooltip;
     node.command = {
       command: 'skycms.openFile',
       title: 'Open SkyCMS file',
@@ -661,7 +789,8 @@ export class SkyCmsNode extends vscode.TreeItem {
     node.layoutVersionNumber = options?.layoutVersionNumber;
     node.articleVersionId = options?.articleVersionId;
     node.isReadOnly = options?.isReadOnly ?? false;
-    node.tooltip = descriptor.tooltip || `${entityLabel} - ${descriptor.label}`;
+    node.description = buildFieldDescription(descriptor, options);
+    node.tooltip = buildFieldTooltip(entityLabel, descriptor, options);
     node.contextValue = options?.isReadOnly ? `${entityType}FieldReadOnlyNode` : `${entityType}FieldNode`;
     node.command = {
       command: 'skycms.openField',
@@ -757,6 +886,42 @@ function normalizeDateForDisplay(value: string): string | undefined {
   return parsed.toISOString().slice(0, 10);
 }
 
+function buildFieldDescription(
+  descriptor: FieldDescriptor,
+  options?: { isReadOnly?: boolean; layoutVersionNumber?: number; articleVersionId?: string },
+): string {
+  const parts: string[] = [descriptor.interactionMode];
+
+  if (options?.isReadOnly) {
+    parts.push('Read-only');
+  }
+
+  return parts.join(' · ');
+}
+
+function buildFieldTooltip(
+  entityLabel: string,
+  descriptor: FieldDescriptor,
+  options?: { isReadOnly?: boolean; layoutVersionNumber?: number; articleVersionId?: string },
+): string {
+  const parts = [descriptor.tooltip || `${entityLabel} - ${descriptor.label}`];
+  const metadata: string[] = [`Field key: ${descriptor.key}`, `Field mode: ${descriptor.interactionMode}`];
+
+  if (options?.isReadOnly) {
+    metadata.push('Read-only: yes');
+  }
+
+  if (options?.layoutVersionNumber !== undefined) {
+    metadata.push(`Layout version: ${options.layoutVersionNumber}`);
+  }
+
+  if (options?.articleVersionId) {
+    metadata.push(`Article version: ${options.articleVersionId}`);
+  }
+
+  return [...parts, ...metadata].join('\n\n');
+}
+
 function formatLayoutLabel(layout: LayoutSummary): string {
   const status = layout.isPublished ? 'Published' : 'Draft';
   return `${layout.name} (${status})`;
@@ -789,5 +954,37 @@ function isDirectoryEntry(entry: FileListEntry): boolean {
   }
 
   return entry.isDir;
+}
+
+function buildPathMetadata(path: string, displayPath?: string): { description: string; tooltip: string } {
+  const canonicalPath = path;
+  const friendlyPath = displayPath && displayPath.trim().length > 0 ? displayPath : canonicalPath;
+  const articleNumber = extractArticleNumber(canonicalPath);
+
+  const articleHint = articleNumber !== undefined
+    ? `\n\nArticle number: ${articleNumber}`
+    : '';
+
+  if (friendlyPath === canonicalPath) {
+    return {
+      description: friendlyPath,
+      tooltip: `Path: ${canonicalPath}${articleHint}`,
+    };
+  }
+
+  return {
+    description: friendlyPath,
+    tooltip: `Friendly path: ${friendlyPath}\n\nStorage path: ${canonicalPath}${articleHint}`,
+  };
+}
+
+function extractArticleNumber(path: string): number | undefined {
+  const match = path.match(/^\/pub\/articles\/(\d+)(?:\/|$)/i);
+  if (!match) {
+    return undefined;
+  }
+
+  const articleNumber = Number(match[1]);
+  return Number.isFinite(articleNumber) ? articleNumber : undefined;
 }
 

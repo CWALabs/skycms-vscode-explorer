@@ -156,6 +156,36 @@ export function registerWebHostCommandDriver(
         showError('Could not unpublish article.', error);
       }
     }),
+    vscode.commands.registerCommand('skycms.restoreArticle', async () => {
+      try {
+        ensureSiteConfigured();
+        const articleNumberInput = await vscode.window.showInputBox({
+          title: 'Restore Deleted Article',
+          prompt: 'Enter the article number to restore.',
+          ignoreFocusOut: true,
+          validateInput: (value) => {
+            const trimmed = value.trim();
+            if (trimmed.length === 0) {
+              return 'Article number is required.';
+            }
+
+            const parsed = Number(trimmed);
+            return Number.isInteger(parsed) && parsed > 0 ? undefined : 'Enter a valid article number greater than 0.';
+          },
+        });
+
+        if (articleNumberInput === undefined) {
+          return;
+        }
+
+        const articleNumber = Number(articleNumberInput.trim());
+        await commandClient.restoreArticle(articleNumber);
+        provider.refresh();
+        vscode.window.showInformationMessage(`Article #${articleNumber} restored.`);
+      } catch (error) {
+        showError('Could not restore article.', error);
+      }
+    }),
     vscode.commands.registerCommand('skycms.newArticle', async () => {
       try {
         ensureSiteConfigured();
@@ -501,6 +531,23 @@ export function validateInputValue(fieldKey: string, value: string): string | un
   if (fieldKey === 'title' || fieldKey === 'layoutName') {
     if (value.trim().length === 0) {
       return 'This field is required and cannot be empty.';
+    }
+  }
+
+  if (fieldKey.toLowerCase() === 'bannerimage') {
+    const trimmed = value.trim();
+
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return 'Use an http or https URL, or leave the field empty.';
+      }
+    } catch {
+      return 'Use a valid http or https URL, or leave the field empty.';
     }
   }
 

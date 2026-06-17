@@ -6,7 +6,22 @@ import { SkyCmsQueryClient } from './apiClient/queries';
 import { SkyCmsNode, SkyCmsTreeProvider } from './treeProvider';
 import { HttpError } from './apiClient/http';
 import { SkyCmsFieldFileSystemProvider } from './fieldFileSystemProvider';
-import { SkyCmsFileSystemProvider } from './fileSystemProvider';
+import { SkyCmsFileSystemProvider, SKYCMS_PROTECTED_PATHS, SKYCMS_READ_ONLY_FILES } from './fileSystemProvider';
+import { SkyCmsDragAndDropController } from './dragAndDropController';
+import { findSkyCmsContentSearchResults, type SkyCmsContentSearchResult } from './contentSearch';
+import {
+  getFieldReferenceFromFieldNode,
+  isPreviewCapableNode,
+  resolvePreviewNodeFromFieldReference,
+  tryParseFieldReferenceFromUri,
+} from './previewContext';
+import {
+  addRecentContentShortcut,
+  clearInvalidShortcuts,
+  getContentShortcutPicks,
+  isShortcutEligibleNode,
+  togglePinnedContentShortcut,
+} from './contentShortcuts';
 import { SiteManager, SkyCmsSiteProfile } from './siteManager';
 import {
   buildFieldUri,
@@ -21,6 +36,15 @@ import { registerSkyCmsChatParticipant } from './chatParticipant';
 import { initializeLogging, logInfo, logError } from './log';
 import { ErrorHandler } from './errorHandler';
 
+/** Discriminated union representing an item that has been Cut or Copied. */
+interface NodeClipboard {
+  node: SkyCmsNode;
+  operation: 'cut' | 'copy';
+}
+
+/** Tracks a node that has been Cut or Copied, waiting to be placed on next Paste. */
+let nodeClipboard: NodeClipboard | null = null;
+
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
   initializeLogging(context);
   logInfo('Extension activation started');
@@ -28,15 +52,18 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   await siteManager.ensureInitialized(getConfiguredEditorUrl());
 
   let activeSite = await siteManager.getActiveSite();
+  let hasTreeFilter = false;
 
   const updateViewContext = async (): Promise<void> => {
     const site = await siteManager.getActiveSite();
     await vscode.commands.executeCommand('setContext', 'skycms.hasSite', !!site);
     const token = site ? await context.secrets.get(siteManager.getTokenSecretKey(site.id)) : undefined;
     await vscode.commands.executeCommand('setContext', 'skycms.isSignedIn', !!token);
+    await vscode.commands.executeCommand('setContext', 'skycms.hasTreeFilter', hasTreeFilter);
   };
 
   await updateViewContext();
+  await clearInvalidShortcuts(context);
 
   const getActiveEditorUrl = (): string => activeSite?.editorUrl ?? '';
   const getActiveTokenStorageKey = (): string | undefined =>
@@ -108,7 +135,14 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   const provider = new SkyCmsTreeProvider(queryClient, async () => authManager.getToken(), siteManager, authManager);
   const fieldFileSystemProvider = new SkyCmsFieldFileSystemProvider(queryClient, commandClient);
   const fileSystemProvider = new SkyCmsFileSystemProvider(queryClient, commandClient);
-  const treeView = vscode.window.createTreeView('skycmsExplorer', { treeDataProvider: provider });
+  const dragAndDropController = new SkyCmsDragAndDropController(commandClient, () => {
+    provider.refresh();
+    fileSystemProvider.refresh();
+  });
+  const treeView = vscode.window.createTreeView('skycmsExplorer', {
+    treeDataProvider: provider,
+    dragAndDropController,
+  });
   logInfo('SkyCMS tree view created');
 
   registerSkyCmsChatParticipant(context, () => activeSite);
@@ -287,6 +321,222 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           showError('Could not open SkyCMS chat.', error);
         }
       }),
+    vscode.commands.registerCommand('skycms.searchContent', async () => {
+      try {
+        ensureEditorUrlConfigured();
+
+        const scope = await vscode.window.showQuickPick(
+          [
+            { label: 'All Content', description: 'Search layouts, templates, articles, and files', value: 'all' as const },
+            { label: 'Layouts', description: 'Search layout names and descriptions', value: 'layouts' as const },
+            { label: 'Page Templates', description: 'Search template names and linked layouts', value: 'templates' as const },
+            { label: 'Articles', description: 'Search article titles and blog posts', value: 'articles' as const },
+            { label: 'Files', description: 'Search files and folders in /pub', value: 'files' as const },
+          ],
+          {
+            title: 'Search SkyCMS Content',
+            placeHolder: 'Choose a content scope to search',
+          },
+        );
+
+        if (!scope) {
+          return;
+        }
+
+        const query = await vscode.window.showInputBox({
+          title: 'Search SkyCMS Content',
+          prompt: `Search ${scope.label.toLowerCase()}`,
+          ignoreFocusOut: true,
+          validateInput: (value) => (value.trim().length === 0 ? 'Enter a search term.' : undefined),
+        });
+
+        if (!query?.trim()) {
+          return;
+        }
+
+        const results = await withBusyIndicator('Searching content', () =>
+          findSkyCmsContentSearchResults(queryClient, {
+            query,
+            scope: scope.value,
+            limit: 20,
+          }),
+        );
+
+        if (results.length === 0) {
+          vscode.window.showInformationMessage(`No SkyCMS content matched "${query.trim()}".`);
+          return;
+        }
+
+        const picked = await vscode.window.showQuickPick(
+          results.map((result) => ({
+            label: result.label,
+            description:
+              result.description ??
+              (result.kind === 'folder'
+                ? 'Folder'
+                : result.kind === 'file'
+                  ? 'File'
+                  : result.kind === 'layout'
+                    ? 'Layout'
+                    : result.kind === 'template'
+                      ? 'Template'
+                      : 'Content'),
+            result,
+          })),
+          {
+            title: `Search results for "${query.trim()}"`,
+            placeHolder: 'Select a result to open',
+            matchOnDescription: true,
+          },
+        );
+
+        if (!picked) {
+          return;
+        }
+
+        const result = picked.result;
+        const actionOptions = getSearchResultActionOptions(result);
+        const action = await vscode.window.showQuickPick(actionOptions, {
+          title: `${result.label}`,
+          placeHolder: 'Choose what to do with this result',
+        });
+
+        if (!action) {
+          return;
+        }
+
+        if (action.command === 'skycms.togglePinnedContent') {
+          await vscode.commands.executeCommand(action.command, result.node);
+          return;
+        }
+
+        if (isShortcutEligibleNode(result.node)) {
+          await addRecentContentShortcut(context, result.node, {
+            label: result.label,
+            description: result.description,
+          });
+        }
+
+        await vscode.commands.executeCommand(action.command, result.node);
+      } catch (error) {
+        showError('Could not search SkyCMS content.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.openRecentContent', async () => {
+      try {
+        ensureEditorUrlConfigured();
+        const picks = getContentShortcutPicks(context);
+        if (picks.length === 0) {
+          vscode.window.showInformationMessage('No recent or pinned SkyCMS content yet. Use Search Content to add history.');
+          return;
+        }
+
+        const selected = await vscode.window.showQuickPick(
+          picks.map((item) => ({
+            label: item.label,
+            description: item.source === 'pinned' ? 'Pinned' : 'Recent',
+            detail: item.description,
+            item,
+          })),
+          {
+            title: 'Recent and Pinned SkyCMS Content',
+            placeHolder: 'Select content to open',
+            matchOnDescription: true,
+            matchOnDetail: true,
+          },
+        );
+
+        if (!selected) {
+          return;
+        }
+
+        const node = selected.item.node as unknown as SkyCmsNode;
+        const command = getDefaultShortcutCommand(node);
+        if (!command) {
+          vscode.window.showWarningMessage('This shortcut can no longer be opened. Re-add it from search results.');
+          return;
+        }
+
+        if (isShortcutEligibleNode(node)) {
+          await addRecentContentShortcut(context, node, {
+            label: selected.item.label,
+            description: selected.item.description,
+          });
+        }
+
+        await vscode.commands.executeCommand(command, node);
+      } catch (error) {
+        showError('Could not open recent content.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.togglePinnedContent', async (node: unknown) => {
+      try {
+        if (!isShortcutEligibleNode(node)) {
+          vscode.window.showErrorMessage('Pinning is only available for layouts, templates, articles, and files.');
+          return;
+        }
+
+        const isPinned = await togglePinnedContentShortcut(context, node, {
+          label: String(node.label),
+          description: typeof node.description === 'string' ? node.description : undefined,
+        });
+
+        vscode.window.showInformationMessage(
+          isPinned
+            ? `Pinned "${String(node.label)}" for quick access.`
+            : `Unpinned "${String(node.label)}".`,
+        );
+      } catch (error) {
+        showError('Could not update pinned content.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.filterTree', async () => {
+      try {
+        ensureEditorUrlConfigured();
+
+        const scope = await vscode.window.showQuickPick(
+          [
+            { label: 'All Explorer Content', value: 'all' as const },
+            { label: 'Layouts Only', value: 'layouts' as const },
+            { label: 'Page Templates Only', value: 'templates' as const },
+            { label: 'Articles Only', value: 'articles' as const },
+            { label: 'Files Only', value: 'files' as const },
+          ],
+          {
+            title: 'Filter SkyCMS Explorer',
+            placeHolder: 'Choose which area to filter',
+          },
+        );
+
+        if (!scope) {
+          return;
+        }
+
+        const query = await vscode.window.showInputBox({
+          title: 'Filter SkyCMS Explorer',
+          prompt: `Show items containing...`,
+          ignoreFocusOut: true,
+          validateInput: (value) => (value.trim().length === 0 ? 'Enter a filter value.' : undefined),
+        });
+
+        if (!query?.trim()) {
+          return;
+        }
+
+        provider.setContentFilter(query, scope.value);
+        hasTreeFilter = true;
+        await vscode.commands.executeCommand('setContext', 'skycms.hasTreeFilter', true);
+        vscode.window.showInformationMessage(`Explorer filter applied: "${query.trim()}" (${scope.label}).`);
+      } catch (error) {
+        showError('Could not filter SkyCMS explorer.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.clearTreeFilter', async () => {
+      provider.clearContentFilter();
+      hasTreeFilter = false;
+      await vscode.commands.executeCommand('setContext', 'skycms.hasTreeFilter', false);
+      vscode.window.showInformationMessage('Explorer filter cleared.');
+    }),
     vscode.commands.registerCommand('skycms.openDocs', async () => {
       await vscode.env.openExternal(vscode.Uri.parse('https://docs.sky-cms.com/'));
     }),
@@ -295,6 +545,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const items: Array<vscode.QuickPickItem & { cmd: string }> = [
           { label: '$(globe) Open Public Site', description: 'View the live public website', cmd: 'skycms.openPublicSite' },
           { label: '$(globe) Open Editor', description: 'Open the SkyCMS editor in a browser', cmd: 'skycms.openEditorSite' },
+          { label: '$(preview) Preview Current Context', description: 'Preview selected content or active SkyCMS field tab', cmd: 'skycms.previewCurrent' },
+          { label: '$(search) Search Content', description: 'Find layouts, templates, articles, and files', cmd: 'skycms.searchContent' },
+          { label: '$(history) Recent and Pinned', description: 'Quick access to recently opened or pinned content', cmd: 'skycms.openRecentContent' },
+          { label: '$(filter) Filter Explorer', description: 'Narrow what appears in the tree', cmd: 'skycms.filterTree' },
+          { label: '$(clear-all) Clear Explorer Filter', description: 'Show all tree items again', cmd: 'skycms.clearTreeFilter' },
+          { label: '$(trash) Restore Deleted Article', description: 'Bring a deleted article back into the explorer workflow', cmd: 'skycms.restoreArticle' },
           { label: '$(comment-discussion) Ask SkyCMS', description: 'Start a chat with the SkyCMS assistant', cmd: 'skycms.askSkyCms' },
         ];
         const picked = await vscode.window.showQuickPick(items, {
@@ -411,6 +667,36 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         showError('Could not unpublish article.', error);
       }
     }),
+    vscode.commands.registerCommand('skycms.restoreArticle', async () => {
+      try {
+        ensureEditorUrlConfigured();
+        const articleNumberInput = await vscode.window.showInputBox({
+          title: 'Restore Deleted Article',
+          prompt: 'Enter the article number to restore.',
+          ignoreFocusOut: true,
+          validateInput: (value) => {
+            const trimmed = value.trim();
+            if (trimmed.length === 0) {
+              return 'Article number is required.';
+            }
+
+            const parsed = Number(trimmed);
+            return Number.isInteger(parsed) && parsed > 0 ? undefined : 'Enter a valid article number greater than 0.';
+          },
+        });
+
+        if (articleNumberInput === undefined) {
+          return;
+        }
+
+        const articleNumber = Number(articleNumberInput.trim());
+        await withBusyIndicator('Restoring article', () => commandClient.restoreArticle(articleNumber));
+        provider.refresh();
+        vscode.window.showInformationMessage(`Article #${articleNumber} restored.`);
+      } catch (error) {
+        showError('Could not restore article.', error);
+      }
+    }),
     vscode.commands.registerCommand('skycms.newArticle', async () => {
       try {
         ensureEditorUrlConfigured();
@@ -456,6 +742,44 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         }
       } catch (error) {
         showError('Could not open preview.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.previewCurrent', async () => {
+      try {
+        ensureEditorUrlConfigured();
+
+        const selectedNode = treeView.selection?.[0];
+        let previewNode: SkyCmsNode | undefined;
+
+        if (isPreviewCapableNode(selectedNode)) {
+          previewNode = selectedNode as SkyCmsNode;
+        } else if (selectedNode && selectedNode.kind === 'field') {
+          const fieldReference = getFieldReferenceFromFieldNode(selectedNode);
+          if (fieldReference) {
+            previewNode = await withBusyIndicator('Resolving preview target', () =>
+              resolvePreviewNodeFromFieldReference(queryClient, fieldReference),
+            );
+          }
+        }
+
+        if (!previewNode) {
+          const activeUri = vscode.window.activeTextEditor?.document?.uri;
+          const fieldReference = activeUri ? tryParseFieldReferenceFromUri(activeUri) : undefined;
+          if (fieldReference) {
+            previewNode = await withBusyIndicator('Resolving preview target', () =>
+              resolvePreviewNodeFromFieldReference(queryClient, fieldReference),
+            );
+          }
+        }
+
+        if (!previewNode) {
+          vscode.window.showInformationMessage('Select a layout, template, article, or open a SkyCMS field tab to preview.');
+          return;
+        }
+
+        await vscode.commands.executeCommand('skycms.preview', previewNode);
+      } catch (error) {
+        showError('Could not resolve preview target.', error);
       }
     }),
     vscode.commands.registerCommand('skycms.openArticleOnPublicSite', async (node: unknown) => {
@@ -684,6 +1008,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         ensureEditorUrlConfigured();
         const fileNode = assertFileNode(node);
+
+        if (SKYCMS_READ_ONLY_FILES.has(fileNode.path!)) {
+          vscode.window.showErrorMessage(`"${fileNode.path}" is a SkyCMS system file and cannot be deleted.`);
+          return;
+        }
+
         const confirmed = await vscode.window.showWarningMessage(
           `Delete "${fileNode.label}"? This cannot be undone.`,
           {modal: true},
@@ -706,6 +1036,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         ensureEditorUrlConfigured();
         const folderNode = assertFileNode(node);
+
+        if (SKYCMS_PROTECTED_PATHS.has(folderNode.path!)) {
+          vscode.window.showErrorMessage(`"${folderNode.path}" is required by SkyCMS and cannot be deleted.`);
+          return;
+        }
+
         const confirmed = await vscode.window.showWarningMessage(
           `Delete folder "${folderNode.label}" and all its contents? This cannot be undone.`,
           {modal: true},
@@ -727,7 +1063,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('skycms.uploadFile', async (node: unknown) => {
       try {
         ensureEditorUrlConfigured();
-        const folderNode = assertFileNode(node);
+        const targetPath = resolveFolderTargetPath(node);
 
         const files = await vscode.window.showOpenDialog({
           canSelectFiles: true,
@@ -742,7 +1078,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
         const localUri = files[0];
         const fileName = localUri.path.split('/').pop() ?? 'upload';
-        const destPath = `${folderNode.path}/${fileName}`;
+        const destPath = targetPath === '/' ? `/${fileName}` : `${targetPath}/${fileName}`;
 
         const fileData = await vscode.workspace.fs.readFile(localUri);
         await withBusyIndicator('Uploading file', () => commandClient.uploadFile(destPath, fileData));
@@ -756,7 +1092,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('skycms.newFolder', async (node: unknown) => {
       try {
         ensureEditorUrlConfigured();
-        const parentNode = assertFileNode(node);
+        const targetPath = resolveFolderTargetPath(node);
 
         const name = await vscode.window.showInputBox({
           title: 'New Folder',
@@ -769,13 +1105,314 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
           return;
         }
 
-        const newPath = `${parentNode.path}/${name.trim()}`;
+        const newPath = targetPath === '/' ? `/${name.trim()}` : `${targetPath}/${name.trim()}`;
         await withBusyIndicator('Creating folder', () => commandClient.createFolder(newPath));
         provider.refresh();
         fileSystemProvider.refresh();
         vscode.window.showInformationMessage(`Folder "${name.trim()}" created.`);
       } catch (error) {
         showError('Could not create folder.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.copyPublicPath', async (node: unknown) => {
+      try {
+        ensureEditorUrlConfigured();
+        const fileNode = assertFileNode(node);
+        const site = await siteManager.getActiveSite();
+        if (!site?.publicUrl) {
+          vscode.window.showWarningMessage('Public URL is not configured for this site. Try signing in again.');
+          return;
+        }
+        const base = site.publicUrl.replace(/\/$/, '');
+        const url = `${base}${fileNode.path}`;
+        await vscode.env.clipboard.writeText(url);
+        vscode.window.showInformationMessage(`Copied: ${url}`);
+      } catch (error) {
+        showError('Could not copy public URL.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.pasteFromClipboard', async (node: unknown) => {
+      try {
+        ensureEditorUrlConfigured();
+
+        const targetNode = node as SkyCmsNode | undefined;
+        let targetPath: string;
+        if (!targetNode || targetNode.kind === 'files-category') {
+          targetPath = '/';
+        } else if (targetNode.kind === 'folder' && targetNode.path) {
+          targetPath = targetNode.path;
+        } else {
+          vscode.window.showErrorMessage('Paste is only available on folders in the Files section.');
+          return;
+        }
+
+        const clipboardText = (await vscode.env.clipboard.readText()).trim();
+
+        // If a Cut or Copy operation is pending, perform a Move or Duplicate.
+        if (nodeClipboard) {
+          const { node: source, operation } = nodeClipboard;
+          const sourceName = source.path?.split('/').pop() ?? String(source.label) ?? 'item';
+          const destPath = targetPath === '/' ? `/${sourceName}` : `${targetPath}/${sourceName}`;
+
+          if (operation === 'cut') {
+            nodeClipboard = null;
+            if (source.path === destPath) {
+              vscode.window.showWarningMessage('Source and destination are the same. Nothing to move.');
+              return;
+            }
+            if (source.kind === 'folder') {
+              await withBusyIndicator(`Moving "${sourceName}"`, () => commandClient.moveFolder(source.path!, destPath));
+            } else {
+              await withBusyIndicator(`Moving "${sourceName}"`, () => commandClient.moveFile(source.path!, destPath));
+            }
+            provider.refresh();
+            fileSystemProvider.refresh();
+            vscode.window.showInformationMessage(`"${sourceName}" moved.`);
+          } else {
+            // Copy operation — duplicate file; folder copy not yet supported.
+            if (source.kind === 'folder') {
+              vscode.window.showWarningMessage('Folder copy is not yet supported. Use Cut to move a folder instead.');
+              return;
+            }
+            if (source.path === destPath) {
+              vscode.window.showWarningMessage('Source and destination are the same. Nothing to copy.');
+              return;
+            }
+            await withBusyIndicator(`Copying "${sourceName}"`, async () => {
+              const content = await vscode.workspace.fs.readFile(fileSystemProvider.pathToUri(source.path!));
+              await commandClient.uploadFile(destPath, content);
+            });
+            provider.refresh();
+            fileSystemProvider.refresh();
+            vscode.window.showInformationMessage(`"${sourceName}" copied.`);
+          }
+          return;
+        }
+
+        // Strip surrounding quotes that Windows/macOS may add for paths with spaces.
+        const localPath = clipboardText.replace(/^["']|["']$/g, '').trim();
+
+        if (!localPath) {
+          vscode.window.showWarningMessage('Clipboard is empty. Right-click a file or folder and choose "Copy Path" first.');
+          return;
+        }
+
+        const localUri = vscode.Uri.file(localPath);
+        let stat: vscode.FileStat;
+        try {
+          stat = await vscode.workspace.fs.stat(localUri);
+        } catch {
+          vscode.window.showErrorMessage(`Cannot read "${localPath}". Make sure you used "Copy Path" on a file or folder in the Explorer.`);
+          return;
+        }
+
+        if (stat.type === vscode.FileType.File) {
+          const fileName = localPath.replace(/\\/g, '/').split('/').pop() ?? 'upload';
+          const destPath = targetPath === '/' ? `/${fileName}` : `${targetPath}/${fileName}`;
+          await withBusyIndicator(`Uploading ${fileName}`, async () => {
+            const data = await vscode.workspace.fs.readFile(localUri);
+            await commandClient.uploadFile(destPath, data);
+          });
+          provider.refresh();
+          fileSystemProvider.refresh();
+          vscode.window.showInformationMessage(`"${fileName}" uploaded.`);
+        } else if (stat.type === vscode.FileType.Directory) {
+          const folderName = localPath.replace(/\\/g, '/').split('/').pop() ?? 'folder';
+          const destBase = targetPath === '/' ? `/${folderName}` : `${targetPath}/${folderName}`;
+          let fileCount = 0;
+          await withBusyIndicator(`Uploading "${folderName}"`, async () => {
+            fileCount = await uploadDirectoryRecursive(localUri, destBase, commandClient);
+          });
+          provider.refresh();
+          fileSystemProvider.refresh();
+          vscode.window.showInformationMessage(`"${folderName}" uploaded (${fileCount} file${fileCount !== 1 ? 's' : ''}).`);
+        } else {
+          vscode.window.showErrorMessage('The clipboard path is not a file or folder.');
+        }
+      } catch (error) {
+        showError('Could not paste from clipboard.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.openFileManager', async (node: unknown) => {
+      try {
+        ensureEditorUrlConfigured();
+        const typedNode = node as SkyCmsNode | undefined;
+        const folderPath =
+          !typedNode || typedNode.kind === 'files-category'
+            ? '/pub'
+            : typedNode.kind === 'folder' && typedNode.path
+              ? typedNode.path
+              : '/pub';
+        const url = buildFileManagerUrl(getActiveEditorUrl(), folderPath);
+        await vscode.env.openExternal(vscode.Uri.parse(url));
+      } catch (error) {
+        showError('Could not open file manager.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.openOnWeb', async (node: unknown) => {
+      try {
+        ensureEditorUrlConfigured();
+        const fileNode = assertFileNode(node);
+        const site = await siteManager.getActiveSite();
+        if (!site?.publicUrl) {
+          vscode.window.showWarningMessage('Public URL is not configured for this site. Try signing in again.');
+          return;
+        }
+        const url = `${site.publicUrl.replace(/\/$/, '')}${fileNode.path}`;
+        await vscode.env.openExternal(vscode.Uri.parse(url));
+      } catch (error) {
+        showError('Could not open file on web.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.rename', async (node: unknown) => {
+      try {
+        ensureEditorUrlConfigured();
+        const typedNode = assertFileNode(node);
+        const currentName = typedNode.path?.split('/').pop() ?? String(typedNode.label) ?? '';
+        const newName = await vscode.window.showInputBox({
+          title: typedNode.kind === 'folder' ? 'Rename Folder' : 'Rename File',
+          value: currentName,
+          valueSelection: [0, currentName.length],
+          prompt: 'Enter the new name.',
+          ignoreFocusOut: true,
+          validateInput: (value) => {
+            if (!value.trim()) { return 'Name is required.'; }
+            if (value.includes('/')) { return 'Name cannot contain slashes.'; }
+            return undefined;
+          },
+        });
+
+        if (!newName || newName.trim() === currentName) {
+          return;
+        }
+
+        const parentPath = typedNode.path!.substring(0, typedNode.path!.lastIndexOf('/')) || '/';
+        const newPath = parentPath === '/' ? `/${newName.trim()}` : `${parentPath}/${newName.trim()}`;
+
+        if (typedNode.kind === 'folder') {
+          await withBusyIndicator('Renaming folder', () => commandClient.moveFolder(typedNode.path!, newPath));
+        } else {
+          await withBusyIndicator('Renaming file', () => commandClient.moveFile(typedNode.path!, newPath));
+        }
+        provider.refresh();
+        fileSystemProvider.refresh();
+        vscode.window.showInformationMessage(`Renamed to "${newName.trim()}".`);
+      } catch (error) {
+        showError('Could not rename.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.cut', async (node: unknown) => {
+      try {
+        const typedNode = assertFileNode(node);
+        nodeClipboard = { node: typedNode, operation: 'cut' };
+        vscode.window.showInformationMessage(
+          `"${String(typedNode.label)}" cut. Navigate to the destination folder and use Paste.`,
+        );
+      } catch (error) {
+        showError('Could not cut item.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.addToChat', async (node: unknown) => {
+      try {
+        const typedNode = node as SkyCmsNode | undefined;
+        if (!typedNode) {
+          return;
+        }
+        const query = buildAddToChatQuery(typedNode);
+        await vscode.commands.executeCommand('workbench.action.chat.open', {
+          query,
+          isPartialQuery: true,
+        });
+      } catch (error) {
+        showError('Could not open chat.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.newFile', async (node: unknown) => {
+      try {
+        ensureEditorUrlConfigured();
+        const typedNode = node as SkyCmsNode | undefined;
+        const targetPath = resolveFolderTargetPath(typedNode);
+        const filename = await vscode.window.showInputBox({
+          prompt: 'Enter new file name',
+          placeHolder: 'example.html',
+          validateInput: (v) => (v.trim() ? null : 'File name cannot be empty.'),
+        });
+        if (!filename?.trim()) {
+          return;
+        }
+        const destPath = targetPath === '/' ? `/${filename.trim()}` : `${targetPath}/${filename.trim()}`;
+        await withBusyIndicator(`Creating "${filename.trim()}"`, () =>
+          commandClient.uploadFile(destPath, new Uint8Array()),
+        );
+        provider.refresh();
+        fileSystemProvider.refresh();
+        vscode.window.showInformationMessage(`"${filename.trim()}" created.`);
+      } catch (error) {
+        showError('Could not create file.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.openToSide', async (node: unknown) => {
+      try {
+        ensureEditorUrlConfigured();
+        const fileNode = assertFileNode(node);
+        if (fileNode.isDir) {
+          vscode.window.showErrorMessage('Cannot open a folder to the side.');
+          return;
+        }
+        const uri = fileSystemProvider.pathToUri(fileNode.path!);
+        const document = await vscode.workspace.openTextDocument(uri);
+        await vscode.window.showTextDocument(document, { viewColumn: vscode.ViewColumn.Beside, preview: false });
+      } catch (error) {
+        showError('Could not open file to the side.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.copyCmsPath', async (node: unknown) => {
+      try {
+        const typedNode = assertFileNode(node);
+        if (!typedNode.path) {
+          vscode.window.showErrorMessage('This item has no CMS path.');
+          return;
+        }
+        await vscode.env.clipboard.writeText(typedNode.path);
+        vscode.window.showInformationMessage(`CMS path copied: ${typedNode.path}`);
+      } catch (error) {
+        showError('Could not copy CMS path.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.download', async (node: unknown) => {
+      try {
+        ensureEditorUrlConfigured();
+        const fileNode = assertFileNode(node);
+        if (fileNode.isDir) {
+          vscode.window.showErrorMessage('Folder download is not supported. Download individual files instead.');
+          return;
+        }
+        const fileName = fileNode.path!.split('/').pop() ?? 'download';
+        const saveUri = await vscode.window.showSaveDialog({
+          defaultUri: vscode.Uri.file(fileName),
+          saveLabel: 'Download',
+        });
+        if (!saveUri) {
+          return;
+        }
+        await withBusyIndicator(`Downloading "${fileName}"`, async () => {
+          const content = await vscode.workspace.fs.readFile(fileSystemProvider.pathToUri(fileNode.path!));
+          await vscode.workspace.fs.writeFile(saveUri, content);
+        });
+        vscode.window.showInformationMessage(`"${fileName}" downloaded.`);
+      } catch (error) {
+        showError('Could not download file.', error);
+      }
+    }),
+    vscode.commands.registerCommand('skycms.copy', async (node: unknown) => {
+      try {
+        const typedNode = assertFileNode(node);
+        nodeClipboard = { node: typedNode, operation: 'copy' };
+        vscode.window.showInformationMessage(
+          `"${String(typedNode.label)}" copied. Navigate to the destination folder and use Paste.`,
+        );
+      } catch (error) {
+        showError('Could not copy item.', error);
       }
     }),
   );
@@ -892,6 +1529,93 @@ export function assertFileNode(node: unknown): SkyCmsNode {
   return typedNode;
 }
 
+/**
+ * Resolves the destination folder path for upload/new-folder operations.
+ * Accepts folderNode, filesCategoryNode (→ '/'), or throws for anything else.
+ */
+function resolveFolderTargetPath(node: unknown): string {
+  const typedNode = node as SkyCmsNode | undefined;
+  if (!typedNode || typedNode.kind === 'files-category') {
+    return '/';
+  }
+  if (typedNode.kind === 'folder' && typedNode.path) {
+    return typedNode.path;
+  }
+  throw new Error('Invalid SkyCMS folder node.');
+}
+
+/**
+ * Builds the elFinder file manager URL for a given folder path.
+ * The hash fragment encodes the path in the format elFinder expects.
+ */
+function buildFileManagerUrl(editorUrl: string, folderPath: string): string {
+  const target = encodeURIComponent(folderPath);
+  // elFinder hash: 'elf_l1_' + base64 of path without leading slash
+  const hash = `elf_l1_${btoa(folderPath.replace(/^\//, ''))}`;
+  return `${editorUrl.replace(/\/$/, '')}/FileManager?target=${target}#${hash}`;
+}
+
+/**
+ * Builds a pre-filled @skycms chat query text for a given tree node.
+ */
+function buildAddToChatQuery(node: SkyCmsNode): string {
+  switch (node.kind) {
+    case 'file':
+      return `@skycms file at ${node.path}: `;
+    case 'folder':
+      return `@skycms folder at ${node.path}: `;
+    case 'files-category':
+      return `@skycms Files storage: `;
+    case 'article':
+    case 'blog-stream':
+      return node.article
+        ? `@skycms article "${node.article.title}" (#${node.article.articleNumber}): `
+        : `@skycms article "${String(node.label)}": `;
+    case 'layout':
+      return node.layout
+        ? `@skycms layout "${node.layout.name}": `
+        : `@skycms layout "${String(node.label)}": `;
+    case 'layout-version':
+      return `@skycms layout version ${node.layoutVersion?.version ?? String(node.label)}: `;
+    case 'template':
+      return node.template
+        ? `@skycms page template "${node.template.name}": `
+        : `@skycms template "${String(node.label)}": `;
+    case 'article-version':
+      return node.article
+        ? `@skycms version ${node.articleVersion?.versionNumber} of article "${node.article.title}": `
+        : `@skycms article version ${String(node.label)}: `;
+    case 'category':
+      return `@skycms ${node.category} section: `;
+    case 'root':
+      return `@skycms site "${String(node.label)}": `;
+    default:
+      return '@skycms ';
+  }
+}
+
+async function uploadDirectoryRecursive(
+  localUri: vscode.Uri,
+  destPath: string,
+  commandClient: SkyCmsCommandClient,
+): Promise<number> {
+  await commandClient.createFolder(destPath);
+  let count = 0;
+  const entries = await vscode.workspace.fs.readDirectory(localUri);
+  for (const [name, type] of entries) {
+    const childLocalUri = vscode.Uri.joinPath(localUri, name);
+    const childDestPath = `${destPath}/${name}`;
+    if (type === vscode.FileType.File) {
+      const data = await vscode.workspace.fs.readFile(childLocalUri);
+      await commandClient.uploadFile(childDestPath, data);
+      count++;
+    } else if (type === vscode.FileType.Directory) {
+      count += await uploadDirectoryRecursive(childLocalUri, childDestPath, commandClient);
+    }
+  }
+  return count;
+}
+
 async function openDocumentField(node: SkyCmsNode, siteName?: string): Promise<void> {
   const titlePart = getDocumentTitlePart(node);
   const propertyPart = String(node.label || node.fieldKey || 'Field');
@@ -959,6 +1683,23 @@ export function validateInputValue(fieldKey: string, value: string): string | un
   if (fieldKey === 'title' || fieldKey === 'layoutName') {
     if (value.trim().length === 0) {
       return 'This field is required and cannot be empty.';
+    }
+  }
+
+  if (fieldKey.toLowerCase() === 'bannerimage') {
+    const trimmed = value.trim();
+
+    if (trimmed.length === 0) {
+      return undefined;
+    }
+
+    try {
+      const parsed = new URL(trimmed);
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+        return 'Use an http or https URL, or leave the field empty.';
+      }
+    } catch {
+      return 'Use a valid http or https URL, or leave the field empty.';
     }
   }
 
@@ -1088,6 +1829,61 @@ function resolveLayoutCommandTarget(node: unknown): { layoutNumber: number; vers
   }
 
   throw new Error('Invalid SkyCMS layout node.');
+}
+
+function getSearchResultActionOptions(
+  result: SkyCmsContentSearchResult,
+): Array<vscode.QuickPickItem & { command: string }> {
+  if (result.kind === 'file') {
+    return [
+      { label: 'Open', description: 'Open file in editor', command: 'skycms.openFile' },
+      { label: 'Open to the Side', description: 'Open file in split editor', command: 'skycms.openToSide' },
+      { label: 'Download', description: 'Download file locally', command: 'skycms.download' },
+      { label: 'Copy CMS Path', description: 'Copy the CMS storage path', command: 'skycms.copyCmsPath' },
+      { label: 'Pin / Unpin', description: 'Toggle quick access in recent and pinned list', command: 'skycms.togglePinnedContent' },
+    ];
+  }
+
+  if (result.kind === 'folder') {
+    return [
+      { label: 'Open in File Manager', description: 'Open folder in SkyCMS file manager', command: 'skycms.openFileManager' },
+      { label: 'Copy CMS Path', description: 'Copy the CMS storage path', command: 'skycms.copyCmsPath' },
+      { label: 'Add to Chat', description: 'Open chat with this folder context', command: 'skycms.addToChat' },
+      { label: 'Pin / Unpin', description: 'Toggle quick access in recent and pinned list', command: 'skycms.togglePinnedContent' },
+    ];
+  }
+
+  if (result.kind === 'article' || result.kind === 'blog-stream') {
+    return [
+      { label: 'Preview Draft', description: 'Open live draft preview in browser', command: 'skycms.preview' },
+      { label: 'Open on Public Site', description: 'Open public URL if published', command: 'skycms.openArticleOnPublicSite' },
+      { label: 'Add to Chat', description: 'Open chat with this article context', command: 'skycms.addToChat' },
+      { label: 'Pin / Unpin', description: 'Toggle quick access in recent and pinned list', command: 'skycms.togglePinnedContent' },
+    ];
+  }
+
+  return [
+    { label: 'Preview Draft', description: 'Open preview in browser', command: 'skycms.preview' },
+    { label: 'Add to Chat', description: 'Open chat with this content context', command: 'skycms.addToChat' },
+    { label: 'Pin / Unpin', description: 'Toggle quick access in recent and pinned list', command: 'skycms.togglePinnedContent' },
+  ];
+}
+
+function getDefaultShortcutCommand(node: SkyCmsNode): string | undefined {
+  switch (node.kind) {
+    case 'file':
+      return 'skycms.openFile';
+    case 'folder':
+      return 'skycms.openFileManager';
+    case 'layout':
+    case 'layout-version':
+    case 'template':
+    case 'article':
+    case 'blog-stream':
+      return 'skycms.preview';
+    default:
+      return undefined;
+  }
 }
 
 async function promptForNewSite(siteManager: SiteManager): Promise<SkyCmsSiteProfile | undefined> {

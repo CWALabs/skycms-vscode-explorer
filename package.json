@@ -2,7 +2,7 @@
   "name": "skycms-explorer",
   "displayName": "SkyCMS Explorer",
   "description": "Developer-first VS Code Explorer for SkyCMS websites. Manage your sites, articles, layouts, and files directly from VS Code. Visit https://sky-cms.com to learn more.",
-  "version": "0.9.39",
+  "version": "0.9.40",
   "publisher": "cwalabs",
   "homepage": "https://sky-cms.com",
   "author": {
@@ -157,6 +157,11 @@
         "icon": "$(preview)"
       },
       {
+        "command": "skycms.previewCurrent",
+        "title": "Preview Current Context",
+        "icon": "$(preview)"
+      },
+      {
         "command": "skycms.publishArticle",
         "title": "Publish",
         "icon": "$(cloud-upload)"
@@ -165,6 +170,11 @@
         "command": "skycms.unpublishArticle",
         "title": "Unpublish",
         "icon": "$(cloud-download)"
+      },
+      {
+        "command": "skycms.restoreArticle",
+        "title": "Restore Deleted Article...",
+        "icon": "$(trash)"
       },
       {
         "command": "skycms.loadMoreVersions",
@@ -210,26 +220,26 @@
       },
       {
         "command": "skycms.openFile",
-        "title": "Open File"
+        "title": "Open"
       },
       {
         "command": "skycms.deleteFile",
-        "title": "Delete File",
+        "title": "Delete",
         "icon": "$(trash)"
       },
       {
         "command": "skycms.deleteFolder",
-        "title": "Delete Folder",
+        "title": "Delete",
         "icon": "$(trash)"
       },
       {
         "command": "skycms.uploadFile",
-        "title": "Upload File Here",
+        "title": "Upload File...",
         "icon": "$(cloud-upload)"
       },
       {
         "command": "skycms.newFolder",
-        "title": "New Folder Here",
+        "title": "New Folder...",
         "icon": "$(new-folder)"
       },
       {
@@ -258,34 +268,126 @@
         "icon": "$(comment-discussion)"
       },
       {
+        "command": "skycms.searchContent",
+        "title": "Search Content",
+        "icon": "$(search)"
+      },
+      {
+        "command": "skycms.openRecentContent",
+        "title": "Recent and Pinned",
+        "icon": "$(history)"
+      },
+      {
+        "command": "skycms.togglePinnedContent",
+        "title": "Pin / Unpin",
+        "icon": "$(pinned)"
+      },
+      {
+        "command": "skycms.filterTree",
+        "title": "Filter Explorer",
+        "icon": "$(filter)"
+      },
+      {
+        "command": "skycms.clearTreeFilter",
+        "title": "Clear Explorer Filter",
+        "icon": "$(clear-all)"
+      },
+      {
         "command": "skycms.showRootMenu",
-        "title": "More Actions\u2026",
+        "title": "More Actions…",
         "icon": "$(ellipsis)"
       },
       {
         "command": "skycms.openLayoutsDocs",
-        "title": "Open Layouts Documentation",
+        "title": "Open Documentation",
         "icon": "$(ellipsis)"
       },
       {
         "command": "skycms.openTemplatesDocs",
-        "title": "Open Page Templates Documentation",
+        "title": "Open Documentation",
         "icon": "$(ellipsis)"
       },
       {
         "command": "skycms.openArticlesDocs",
-        "title": "Open Articles Documentation",
+        "title": "Open Documentation",
         "icon": "$(ellipsis)"
       },
       {
         "command": "skycms.openBlogsDocs",
-        "title": "Open Blogs Documentation",
+        "title": "Open Documentation",
         "icon": "$(ellipsis)"
       },
       {
         "command": "skycms.openFilesDocs",
-        "title": "Open Files Documentation",
+        "title": "Open Documentation",
         "icon": "$(ellipsis)"
+      },
+      {
+        "command": "skycms.pasteFromClipboard",
+        "title": "Paste",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "skycms.copyPublicPath",
+        "title": "Copy Public URL",
+        "icon": "$(copy)"
+      },
+      {
+        "command": "skycms.openFileManager",
+        "title": "Open in File Manager",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "skycms.openOnWeb",
+        "title": "Open on Web",
+        "icon": "$(globe)"
+      },
+      {
+        "command": "skycms.rename",
+        "title": "Rename...",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "skycms.cut",
+        "title": "Cut",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "skycms.addToChat",
+        "title": "Add to Chat",
+        "icon": "$(comment-discussion)"
+      },
+      {
+        "command": "skycms.newFile",
+        "title": "New File...",
+        "icon": "$(new-file)"
+      },
+      {
+        "command": "skycms.openToSide",
+        "title": "Open to the Side",
+        "icon": "$(split-horizontal)"
+      },
+      {
+        "command": "skycms.copyCmsPath",
+        "title": "Copy CMS Path",
+        "icon": "$(file-symlink-file)"
+      },
+      {
+        "command": "skycms.download",
+        "title": "Download",
+        "icon": "$(cloud-download)"
+      },
+      {
+        "command": "skycms.copy",
+        "title": "Copy",
+        "icon": "$(files)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "skycms.rename",
+        "key": "f2",
+        "when": "view == skycmsExplorer && (viewItem == fileNode || viewItem == folderNode)"
       }
     ],
     "menus": {
@@ -318,9 +420,39 @@
           "group": "skycms@2"
         },
         {
+          "command": "skycms.searchContent",
+          "when": "view == skycmsExplorer && viewItem == rootNode",
+          "group": "skycms@4"
+        },
+        {
+          "command": "skycms.previewCurrent",
+          "when": "view == skycmsExplorer && viewItem == rootNode",
+          "group": "skycms@5"
+        },
+        {
+          "command": "skycms.openRecentContent",
+          "when": "view == skycmsExplorer && viewItem == rootNode",
+          "group": "skycms@6"
+        },
+        {
+          "command": "skycms.filterTree",
+          "when": "view == skycmsExplorer && viewItem == rootNode",
+          "group": "skycms@7"
+        },
+        {
+          "command": "skycms.clearTreeFilter",
+          "when": "view == skycmsExplorer && viewItem == rootNode && skycms.hasTreeFilter",
+          "group": "skycms@8"
+        },
+        {
+          "command": "skycms.restoreArticle",
+          "when": "view == skycmsExplorer && viewItem == rootNode",
+          "group": "skycms@9"
+        },
+        {
           "command": "skycms.askSkyCms",
           "when": "view == skycmsExplorer && viewItem == rootNode",
-          "group": "skycms@3"
+          "group": "skycms@10"
         },
         {
           "command": "skycms.preview",
@@ -438,6 +570,31 @@
           "group": "skycms@1"
         },
         {
+          "command": "skycms.pasteFromClipboard",
+          "when": "view == skycmsExplorer && viewItem == filesCategoryNode && !isWeb",
+          "group": "skycms@2"
+        },
+        {
+          "command": "skycms.newFolder",
+          "when": "view == skycmsExplorer && viewItem == filesCategoryNode",
+          "group": "skycms@3"
+        },
+        {
+          "command": "skycms.uploadFile",
+          "when": "view == skycmsExplorer && viewItem == filesCategoryNode",
+          "group": "skycms@4"
+        },
+        {
+          "command": "skycms.openFileManager",
+          "when": "view == skycmsExplorer && viewItem == filesCategoryNode",
+          "group": "skycms@5"
+        },
+        {
+          "command": "skycms.newFile",
+          "when": "view == skycmsExplorer && viewItem == filesCategoryNode",
+          "group": "skycms@6"
+        },
+        {
           "command": "skycms.duplicateLayoutVersion",
           "when": "view == skycmsExplorer && viewItem == layoutNode",
           "group": "skycms@3"
@@ -478,6 +635,46 @@
           "group": "skycms@2"
         },
         {
+          "command": "skycms.copyPublicPath",
+          "when": "view == skycmsExplorer && viewItem == fileNode",
+          "group": "skycms@3"
+        },
+        {
+          "command": "skycms.openOnWeb",
+          "when": "view == skycmsExplorer && viewItem == fileNode",
+          "group": "skycms@4"
+        },
+        {
+          "command": "skycms.rename",
+          "when": "view == skycmsExplorer && viewItem == fileNode",
+          "group": "skycms@5"
+        },
+        {
+          "command": "skycms.cut",
+          "when": "view == skycmsExplorer && viewItem == fileNode",
+          "group": "skycms@6"
+        },
+        {
+          "command": "skycms.openToSide",
+          "when": "view == skycmsExplorer && viewItem == fileNode",
+          "group": "skycms@7"
+        },
+        {
+          "command": "skycms.copyCmsPath",
+          "when": "view == skycmsExplorer && viewItem == fileNode",
+          "group": "skycms@8"
+        },
+        {
+          "command": "skycms.download",
+          "when": "view == skycmsExplorer && viewItem == fileNode",
+          "group": "skycms@9"
+        },
+        {
+          "command": "skycms.copy",
+          "when": "view == skycmsExplorer && viewItem == fileNode",
+          "group": "skycms@10"
+        },
+        {
           "command": "skycms.deleteFolder",
           "when": "view == skycmsExplorer && viewItem == folderNode",
           "group": "skycms@1"
@@ -488,9 +685,59 @@
           "group": "skycms@2"
         },
         {
+          "command": "skycms.pasteFromClipboard",
+          "when": "view == skycmsExplorer && viewItem == folderNode && !isWeb",
+          "group": "skycms@3"
+        },
+        {
           "command": "skycms.newFolder",
           "when": "view == skycmsExplorer && viewItem == folderNode",
-          "group": "skycms@3"
+          "group": "skycms@4"
+        },
+        {
+          "command": "skycms.copyPublicPath",
+          "when": "view == skycmsExplorer && viewItem == folderNode",
+          "group": "skycms@5"
+        },
+        {
+          "command": "skycms.openFileManager",
+          "when": "view == skycmsExplorer && viewItem == folderNode",
+          "group": "skycms@6"
+        },
+        {
+          "command": "skycms.rename",
+          "when": "view == skycmsExplorer && viewItem == folderNode",
+          "group": "skycms@7"
+        },
+        {
+          "command": "skycms.cut",
+          "when": "view == skycmsExplorer && viewItem == folderNode",
+          "group": "skycms@8"
+        },
+        {
+          "command": "skycms.newFile",
+          "when": "view == skycmsExplorer && viewItem == folderNode",
+          "group": "skycms@9"
+        },
+        {
+          "command": "skycms.copyCmsPath",
+          "when": "view == skycmsExplorer && viewItem == folderNode",
+          "group": "skycms@10"
+        },
+        {
+          "command": "skycms.copy",
+          "when": "view == skycmsExplorer && viewItem == folderNode",
+          "group": "skycms@11"
+        },
+        {
+          "command": "skycms.addToChat",
+          "when": "view == skycmsExplorer && viewItem =~ /^(fileNode|folderNode|filesCategoryNode|rootNode|articleNode|articlePublishedNode|blogStreamNode|blogStreamPublishedNode|layoutNode|layoutVersionNode|templateNode|articleVersionNode|articlesCategory|layoutsCategory|templatesCategory|blogsCategory)$/",
+          "group": "chat@1"
+        },
+        {
+          "command": "skycms.togglePinnedContent",
+          "when": "view == skycmsExplorer && viewItem =~ /^(fileNode|folderNode|articleNode|articlePublishedNode|blogStreamNode|blogStreamPublishedNode|layoutNode|layoutVersionNode|templateNode)$/",
+          "group": "skycms@12"
         }
       ],
       "view/title": [
@@ -518,6 +765,31 @@
           "command": "skycms.askSkyCms",
           "when": "view == skycmsExplorer",
           "group": "skycms@5"
+        },
+        {
+          "command": "skycms.searchContent",
+          "when": "view == skycmsExplorer",
+          "group": "skycms@6"
+        },
+        {
+          "command": "skycms.previewCurrent",
+          "when": "view == skycmsExplorer",
+          "group": "skycms@7"
+        },
+        {
+          "command": "skycms.openRecentContent",
+          "when": "view == skycmsExplorer",
+          "group": "skycms@8"
+        },
+        {
+          "command": "skycms.filterTree",
+          "when": "view == skycmsExplorer",
+          "group": "skycms@9"
+        },
+        {
+          "command": "skycms.clearTreeFilter",
+          "when": "view == skycmsExplorer && skycms.hasTreeFilter",
+          "group": "skycms@10"
         }
       ]
     },

@@ -101,6 +101,17 @@ export class SkyCmsCommandClient {
     });
   }
 
+  public async restoreArticle(articleNumber: number): Promise<void> {
+    const token = await this.getRequiredToken();
+    await requestJson<void>({
+      baseUrl: this.getRequiredBaseUrl(),
+      path: `/api/vscode/articles/${articleNumber}/restore`,
+      method: 'POST',
+      token,
+      timeoutMs: 60_000,
+    });
+  }
+
   public async createArticle(title: string, articleType?: number): Promise<{ articleNumber: number; title: string }> {
     const token = await this.getRequiredToken();
     return requestJson<{ articleNumber: number; title: string }>({

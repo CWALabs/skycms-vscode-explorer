@@ -20,7 +20,7 @@ Reference links for building the SkyCMS VS Code Explorer. Organized by topic so 
 
 ### Authentication and Secrets
 - [`SecretStorage` API reference](https://code.visualstudio.com/api/references/vscode-api#SecretStorage) — the secure credential store for extensions. Accessed via `context.secrets`.
-- [Extension API: `InputBox`](https://code.visualstudio.com/api/references/vscode-api#InputBox) — used to prompt the developer for username and password.
+- [Extension API: `InputBox`](https://code.visualstudio.com/api/references/vscode-api#InputBox) — used for short field edits such as title, category, and publish date values.
 
 ### Commands and Menus
 - [Commands extension guide](https://code.visualstudio.com/api/extension-guides/command)

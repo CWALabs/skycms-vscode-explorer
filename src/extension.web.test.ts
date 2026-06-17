@@ -55,6 +55,7 @@ const mockCommandClient = {
   setInputFieldValue: jest.fn(async () => undefined),
   publishArticle: jest.fn(async () => undefined),
   unpublishArticle: jest.fn(async () => undefined),
+  restoreArticle: jest.fn(async () => undefined),
   createArticle: jest.fn(async () => ({ articleNumber: 12, title: 'A' })),
   createTemplate: jest.fn(async () => ({ templateId: 't1', title: 'T', layoutNumber: 1 })),
   publishLayoutVersion: jest.fn(async () => undefined),
@@ -189,7 +190,11 @@ describe('extension.web activation integration', () => {
       { isCaseSensitive: true },
     );
     expect(vscode.commands.registerCommand).toHaveBeenCalledWith('skycms.openField', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('skycms.previewCurrent', expect.any(Function));
     expect(vscode.commands.registerCommand).toHaveBeenCalledWith('skycms.publishArticle', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('skycms.restoreArticle', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('skycms.diffLayoutVersion', expect.any(Function));
+    expect(vscode.commands.registerCommand).toHaveBeenCalledWith('skycms.diffArticleVersion', expect.any(Function));
     expect(vscode.commands.registerCommand).toHaveBeenCalledWith('skycms.uploadFile', expect.any(Function));
   });
 
@@ -232,6 +237,63 @@ describe('extension.web activation integration', () => {
 
     expect(mockCommandClient.publishArticle).toHaveBeenCalledWith(88);
     expect(mockTreeProvider.refresh).toHaveBeenCalled();
+  });
+
+  test('restoreArticle command dispatches to command client', async () => {
+    await activate(makeContext() as never);
+
+    (vscode.window.showInputBox as jest.Mock).mockResolvedValue('19');
+
+    const handler = getCommandHandler('skycms.restoreArticle');
+    await handler();
+
+    expect(mockCommandClient.restoreArticle).toHaveBeenCalledWith(19);
+    expect(mockTreeProvider.refresh).toHaveBeenCalled();
+  });
+
+  test('diffLayoutVersion command opens a diff editor for layout fields', async () => {
+    await activate(makeContext() as never);
+
+    (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({ label: 'Footer', fieldKey: 'footer' });
+
+    const handler = getCommandHandler('skycms.diffLayoutVersion');
+    await handler({
+      kind: 'layout-version',
+      layout: { layoutNumber: 8, version: 3, name: 'Main Layout' },
+      layoutVersion: { version: 3 },
+    });
+
+    const diffCall = (vscode.commands.executeCommand as jest.Mock).mock.calls.find(
+      ([commandId]: [string]) => commandId === 'vscode.diff',
+    );
+
+    expect(diffCall).toBeDefined();
+    expect(diffCall[3]).toBe('Layout: Footer (v3 vs editable)');
+    expect(String(diffCall[1].toString())).toContain('/layouts/8/3/footer');
+    expect(String(diffCall[2].toString())).toContain('/layouts/8/footer');
+  });
+
+  test('diffArticleVersion command opens a diff editor for article fields', async () => {
+    await activate(makeContext() as never);
+
+    (vscode.window.showQuickPick as jest.Mock).mockResolvedValue({ label: 'Body', fieldKey: 'content' });
+
+    const { SkyCmsNode } = require('./treeProvider');
+    const node = new SkyCmsNode('article-version');
+    node.article = { articleNumber: 21, title: 'Story' };
+    node.articleVersion = { versionNumber: 4, versionId: '22222222-2222-2222-2222-222222222222' };
+
+    const handler = getCommandHandler('skycms.diffArticleVersion');
+    await handler(node);
+
+    const diffCall = (vscode.commands.executeCommand as jest.Mock).mock.calls.find(
+      ([commandId]: [string]) => commandId === 'vscode.diff',
+    );
+
+    expect(diffCall).toBeDefined();
+    expect(diffCall[3]).toBe('Story: Body (v4 vs draft)');
+    expect(String(diffCall[1].toString())).toContain('/articles/21/22222222-2222-2222-2222-222222222222/content');
+    expect(String(diffCall[2].toString())).toContain('/articles/21/content');
   });
 
   test('uploadFile command reads local bytes and uploads destination path', async () => {

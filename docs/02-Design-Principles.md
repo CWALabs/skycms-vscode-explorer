@@ -68,7 +68,7 @@ A later phase may optionally implement `FileSystemProvider` to enable features l
 
 ## 5. SkyCMS Role System is the Auth System
 
-The extension does not have its own login or user management. The user signs in with their SkyCMS Editor credentials (username and password). The API returns a bearer token scoped to that session.
+The extension does not have its own login or user management. The user signs in through the SkyCMS browser-based sign-in flow, and the API returns a bearer token scoped to that session.
 
 The SkyCMS role system governs what the user can do:
 

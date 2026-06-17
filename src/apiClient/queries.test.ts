@@ -165,6 +165,32 @@ describe('SkyCmsQueryClient.getInputFieldValue', () => {
   });
 });
 
+describe('SkyCmsQueryClient.getFilesList', () => {
+  test('returns file entries including optional displayPath', async () => {
+    const entries = [
+      {
+        name: 'My Article Title',
+        path: '/pub/articles/42',
+        displayPath: '/pub/articles/My Article Title',
+        isDir: true,
+        mimeType: 'directory',
+        size: 0,
+      },
+    ];
+    mockRequestJson.mockResolvedValue(entries);
+    const client = makeClient(TOKEN);
+
+    const result = await client.getFilesList('/pub/articles');
+
+    expect(result).toEqual(entries);
+    expect(mockRequestJson).toHaveBeenCalledWith(
+      expect.objectContaining({ method: 'GET', token: TOKEN }),
+    );
+    const call = mockRequestJson.mock.calls[0][0];
+    expect(call.path).toContain('/api/vscode/files/');
+  });
+});
+
 describe('SkyCmsQueryClient.readFile', () => {
   test('returns UTF-8 bytes when server returns plain string content', async () => {
     mockRequestJson.mockResolvedValue('<html><body>Hello</body></html>');
